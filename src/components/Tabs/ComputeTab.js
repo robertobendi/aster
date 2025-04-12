@@ -4,10 +4,20 @@ import aiService from '../../services/aiService';
 import simpleStorage from '../../utils/simpleStorage';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { SortableItem } from '../SortableItem'; // Updated path if you put it inside the same folder
+import { SortableItem } from '../SortableItem'; // Adjust path if needed
 
 const ComputeTab = () => {
-  const hardcodedPrompt = `Write a list of the most important macro-categories that would be fundamental for an underwriter to draft a report about a Florida insurance company based on the data provided. The output must be a JSON array where each object is a paragraph with "title" and "content". Use simple and intuitive language, modular paragraphs.`;
+  const hardcodedPrompt = `Create a JSON array for an underwriter’s report analyzing a Florida insurance company. Each object in the array must represent a critical macro-category and include four keys:
+title: A short, clear heading for the category.
+prompt: A concise, data-focused instruction explaining what to analyze.
+content: Leave empty (do not populate).
+relevant_files: List specific standardized files that directly support this category.
+Requirements:
+Base categories strictly on data from the provided files. Omit categories without supporting documents.
+Use simple, non-technical language for clarity.
+Ensure each category is modular (no overlap) and actionable for underwriting.
+Avoid speculative claims, assumptions, or unsupported metrics. Only reference data explicitly in the files.
+Format the JSON array cleanly, with no markdown or extra symbols.`;
 
   const [files, setFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -88,7 +98,7 @@ const ComputeTab = () => {
   };
 
   const exportJson = () => {
-    const data = blocks.map(({ id, ...rest }) => rest); // Remove the internal id
+    const data = blocks.map(({ id, ...rest }) => rest); // Strip out internal IDs
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -109,13 +119,13 @@ const ComputeTab = () => {
 
       <div className="bg-surface p-6 rounded-lg border border-border-primary">
         <p className="mb-4 text-text-secondary">
-          Automatically generates a JSON report based on all uploaded files.
+          Generates modular underwriting categories based strictly on uploaded file data.
         </p>
 
         {debugMode && (
           <textarea
             className="w-full p-2 border border-border-secondary rounded mb-4 bg-background text-text-primary"
-            rows="6"
+            rows="8"
             placeholder="Edit prompt for debug..."
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
@@ -164,7 +174,6 @@ const ComputeTab = () => {
         )}
       </div>
 
-      {/* Visualize Blocks */}
       {blocks.length > 0 && (
         <div className="mt-8">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

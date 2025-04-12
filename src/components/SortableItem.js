@@ -1,4 +1,4 @@
-// src/components/ComputeTab/SortableItem.js
+// src/components/Tabs/SortableItem.js
 import { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -7,9 +7,9 @@ import { FiX, FiEdit2, FiEye, FiMove } from 'react-icons/fi';
 const SortableItem = ({ id, index, block, onDelete, onEdit }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
   const [editingTitle, setEditingTitle] = useState(false);
-  const [editingContent, setEditingContent] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState(false);
   const [title, setTitle] = useState(block.title);
-  const [content, setContent] = useState(block.content);
+  const [prompt, setPrompt] = useState(block.prompt);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -17,9 +17,9 @@ const SortableItem = ({ id, index, block, onDelete, onEdit }) => {
   };
 
   const saveEdit = (field) => {
-    onEdit(index, field, field === 'title' ? title : content);
+    onEdit(index, field, field === 'title' ? title : prompt);
     if (field === 'title') setEditingTitle(false);
-    if (field === 'content') setEditingContent(false);
+    if (field === 'prompt') setEditingPrompt(false);
   };
 
   return (
@@ -58,35 +58,36 @@ const SortableItem = ({ id, index, block, onDelete, onEdit }) => {
           <button onClick={() => setEditingTitle(true)} className="text-text-secondary hover:text-primary" title="Edit Title">
             <FiEdit2 />
           </button>
-          <button onClick={() => {/* placeholder for inspection */}} className="text-text-secondary hover:text-primary" title="Inspect">
-            <FiEye />
-          </button>
           <button onClick={onDelete} className="text-text-secondary hover:text-status-error" title="Delete Block">
             <FiX />
           </button>
         </div>
       </div>
 
-      <div className="mt-2">
-        {editingContent ? (
+      <div>
+        {editingPrompt ? (
           <textarea
             className="bg-background border border-border-secondary text-text-primary rounded p-2 text-sm w-full"
-            value={content}
-            rows="4"
-            onChange={(e) => setContent(e.target.value)}
-            onBlur={() => saveEdit('content')}
-            onKeyDown={(e) => e.key === 'Enter' && saveEdit('content')}
+            value={prompt}
+            rows="3"
+            onChange={(e) => setPrompt(e.target.value)}
+            onBlur={() => saveEdit('prompt')}
+            onKeyDown={(e) => e.key === 'Enter' && saveEdit('prompt')}
             autoFocus
           />
         ) : (
           <p 
             className="text-text-secondary whitespace-pre-wrap cursor-pointer"
-            onClick={() => setEditingContent(true)}
-            title="Click to edit content"
+            onClick={() => setEditingPrompt(true)}
+            title="Click to edit prompt"
           >
-            {block.content}
+            {block.prompt}
           </p>
         )}
+      </div>
+
+      <div className="text-xs text-text-secondary mt-2">
+        <strong>Relevant Files:</strong> {block.relevant_files?.join(', ') || 'None'}
       </div>
     </div>
   );
