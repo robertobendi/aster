@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FiSettings, FiSave, FiLoader, FiServer, FiCheck, FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
+import { FiSettings, FiSave, FiLoader, FiServer, FiCheck, FiAlertCircle, FiRefreshCw, FiDatabase, FiTrash2 } from 'react-icons/fi';
 import simpleStorage from '../../utils/simpleStorage';
 
 const SettingsTab = () => {
@@ -9,6 +9,8 @@ const SettingsTab = () => {
   const [availableModels, setAvailableModels] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState(null); // null, 'connected', 'error'
   const [saveStatus, setSaveStatus] = useState('');
+  const [storageSize, setStorageSize] = useState(0);
+  const [clearingStorage, setClearingStorage] = useState(false);
   
   // Load saved settings
   useEffect(() => {
@@ -25,12 +27,27 @@ const SettingsTab = () => {
         
         // Test connection and get models on component mount
         fetchAvailableModels(savedPort);
+        
+        // Get storage size
+        calculateStorageSize();
       } catch (error) {
         console.error('Error loading settings:', error);
       }
     };
     
     loadSettings();
+  }, []);
+  
+  // Refresh storage size when tab becomes active
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      // Only recalculate if component is visible
+      if (document.visibilityState === 'visible') {
+        calculateStorageSize();
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(intervalId);
   }, []);
   
   // Save settings
@@ -94,6 +111,87 @@ const SettingsTab = () => {
     } catch (error) {
       alert(`Error connecting to Ollama: ${error.message}`);
     }
+  };
+  
+  // Calculate storage size
+  const calculateStorageSize = async () => {
+    try {
+      // Use the getStorageSize method if available, otherwise fall back to manual calculation
+      if (simpleStorage.getStorageSize) {
+        const size = await simpleStorage.getStorageSize();
+        setStorageSize(size);
+      } else {
+        // For IndexedDB size estimation, we'll get all keys and their sizes
+        let totalSize = 0;
+        
+        // Check standardized files (typically largest)
+        const standardizedFiles = await simpleStorage.getItem('standardized_files') || [];
+        const filesJson = JSON.stringify(standardizedFiles);
+        totalSize += filesJson.length;
+        
+        // Check conversation history
+        const conversation = await simpleStorage.getItem('aster_conversation') || [];
+        const conversationJson = JSON.stringify(conversation);
+        totalSize += conversationJson.length;
+        
+        // Other small settings
+        const context = await simpleStorage.getItem('aster_context') || '';
+        totalSize += context.length;
+        
+        // Convert bytes to appropriate unit
+        setStorageSize(totalSize);
+      }
+    } catch (error) {
+      console.error('Error calculating storage size:', error);
+    }
+  };
+  
+    // Clear all storage
+  const clearAllStorage = async () => {
+    if (window.confirm('Are you sure you want to clear all storage? This will delete all files, conversation history, and settings.')) {
+      setClearingStorage(true);
+      try {
+        if (simpleStorage.clear) {
+          await simpleStorage.clear();
+        } else {
+          // Clear individual items if clear method is not available
+          await simpleStorage.removeItem('standardized_files');
+          await simpleStorage.removeItem('aster_conversation');
+          await simpleStorage.removeItem('aster_context');
+          await simpleStorage.removeItem('ollama_port');
+          await simpleStorage.removeItem('ollama_model');
+        }
+        
+        // Clear localStorage items related to the app
+        localStorage.removeItem('has_files');
+        localStorage.removeItem('files_count');
+        
+        // Reset states
+        setContext('');
+        calculateStorageSize();
+        
+        // Show success message
+        alert('All storage has been cleared successfully!');
+      } catch (error) {
+        console.error('Error clearing storage:', error);
+        alert(`Error clearing storage: ${error.message}`);
+      } finally {
+        setClearingStorage(false);
+      }
+    }
+  };
+  
+  // Format bytes to readable size
+  const formatBytes = (bytes, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
   
   return (
@@ -198,6 +296,67 @@ const SettingsTab = () => {
             value={context}
             onChange={(e) => setContext(e.target.value)}
           />
+        </div>
+        
+        {/* Storage Management */}
+        <div className="mb-8">
+          <label className="block text-text-primary mb-2 font-medium">
+            Storage Management
+          </label>
+          
+          <div className="p-4 bg-background border border-border-secondary rounded mb-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center">
+                <FiDatabase className="w-5 h-5 mr-2 text-text-secondary" />
+                <span>Storage Usage</span>
+              </div>
+              <button
+                className="px-2 py-1 text-sm bg-surface border border-border-primary rounded hover:bg-background transition-all flex items-center"
+                onClick={calculateStorageSize}
+              >
+                <FiRefreshCw className="mr-1" /> Refresh
+              </button>
+            </div>
+            
+            <div className="mt-4">
+              <div className="w-full bg-border-secondary rounded-full h-2 mb-2">
+                <div 
+                  className="bg-primary h-2 rounded-full" 
+                  style={{ 
+                    width: `${Math.min(100, (storageSize / (10 * 1024 * 1024)) * 100)}%` 
+                  }}
+                ></div>
+              </div>
+              <div className="flex justify-between text-sm text-text-secondary">
+                <span>{formatBytes(storageSize)}</span>
+                <span>Recommended max: 10 MB</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between p-4 bg-status-error/10 border border-status-error/20 rounded">
+            <div>
+              <h3 className="text-text-primary font-medium mb-1">Clear All Data</h3>
+              <p className="text-text-secondary text-sm">
+                Delete all files, conversation history, and settings. This action cannot be undone.
+              </p>
+            </div>
+            <button
+              className="px-3 py-2 bg-status-error text-white rounded hover:bg-opacity-90 transition-all flex items-center"
+              onClick={clearAllStorage}
+              disabled={clearingStorage}
+            >
+              {clearingStorage ? (
+                <>
+                  <FiLoader className="mr-1 animate-spin" /> Clearing...
+                </>
+              ) : (
+                <>
+                  <FiTrash2 className="mr-1" /> Clear All Data
+                </>
+              )}
+            </button>
+          </div>
         </div>
         
         {/* Save Button */}

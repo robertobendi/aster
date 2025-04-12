@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { FiCpu, FiSend, FiFile, FiPlus, FiX, FiLoader, FiMaximize2, FiMinimize2, FiRefreshCw } from 'react-icons/fi';
+import { FiCpu, FiSend, FiFile, FiPlus, FiX, FiLoader, FiMaximize2, FiMinimize2, FiRefreshCw, FiInfo, FiCode, FiDownload, FiPlay } from 'react-icons/fi';
 import aiService from '../../services/aiService';
 import simpleStorage from '../../utils/simpleStorage';
 
@@ -9,29 +9,53 @@ const ComputeTab = () => {
   const [conversation, setConversation] = useState([]);
   const [prompt, setPrompt] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState('');
   const [showFileSelector, setShowFileSelector] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [error, setError] = useState(null);
   const [abortController, setAbortController] = useState(null);
   const [currentModel, setCurrentModel] = useState('Loading...');
+  const [debugMode, setDebugMode] = useState(false);
+  const [lastPromptData, setLastPromptData] = useState(null);
+  const [useStreaming, setUseStreaming] = useState(false);
   
   const chatContainerRef = useRef(null);
   const promptInputRef = useRef(null);
   
-  // Load files from storage
-  useEffect(() => {
-    const loadFiles = async () => {
-      try {
-        const filesFromStorage = await simpleStorage.getItem('standardized_files');
-        if (Array.isArray(filesFromStorage) && filesFromStorage.length > 0) {
-          setFiles(filesFromStorage);
-        }
-      } catch (error) {
-        console.error('Failed to load files:', error);
+  // Load model and settings from storage
+  const loadModel = async () => {
+    try {
+      const savedModel = await simpleStorage.getItem('ollama_model');
+      if (savedModel) {
+        setCurrentModel(savedModel);
+      } else {
+        setCurrentModel('phi3:medium'); // Default model
       }
-    };
-    
+      
+      const streamingSetting = await simpleStorage.getItem('use_streaming');
+      setUseStreaming(streamingSetting === true);
+    } catch (error) {
+      console.error('Failed to load model info:', error);
+      setCurrentModel('Unknown');
+    }
+  };
+  
+  // Load files from storage
+  const loadFiles = async () => {
+    try {
+      const filesFromStorage = await simpleStorage.getItem('standardized_files');
+      if (Array.isArray(filesFromStorage) && filesFromStorage.length > 0) {
+        setFiles(filesFromStorage);
+      }
+    } catch (error) {
+      console.error('Failed to load files:', error);
+    }
+  };
+  
+  // Initial load
+  useEffect(() => {
     loadFiles();
+    loadModel();
   }, []);
   
   // Auto-scroll chat
@@ -39,7 +63,7 @@ const ComputeTab = () => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [conversation]);
+  }, [conversation, processingProgress]);
   
   // Save conversation
   useEffect(() => {
@@ -86,6 +110,55 @@ const ComputeTab = () => {
     return selectedFiles.some(file => file.id === fileId);
   };
   
+  // Progress callback for AI processing
+  const updateProgress = (progressMessage) => {
+    setProcessingProgress(progressMessage);
+  };
+  
+  // Prepare debugging info for prompt
+  const preparePromptForDebug = async (userPrompt, files, defaultContext) => {
+    // Create a simplified version of files to avoid memory issues
+    const simplifiedFiles = files.map(file => {
+      // Extract basic info without the full content for debug data
+      const { jsonData, ...fileBasics } = file;
+      return {
+        ...fileBasics,
+        hasContent: !!jsonData,
+        format: jsonData?.format || 'unknown'
+      };
+    });
+    
+    const debugData = {
+      prompt: userPrompt,
+      context: defaultContext,
+      selectedFiles: simplifiedFiles,
+      model: currentModel,
+      timestamp: new Date().toISOString()
+    };
+    
+    setLastPromptData(debugData);
+    
+    // Log to console
+    if (debugMode) {
+      console.log('DEBUG - Sending prompt to AI:', {
+        ...debugData,
+        totalPromptLength: userPrompt.length + 
+                          (defaultContext ? defaultContext.length : 0) +
+                          files.reduce((sum, f) => sum + (f.size || 0), 0)
+      });
+    }
+    
+    return debugData;
+  };
+  
+  // Toggle streaming mode
+  const toggleStreaming = async () => {
+    const newValue = !useStreaming;
+    setUseStreaming(newValue);
+    await simpleStorage.setItem('use_streaming', newValue);
+    console.log(`Streaming mode ${newValue ? 'enabled' : 'disabled'}`);
+  };
+  
   // Send message to AI
   const sendMessage = async () => {
     if (!prompt.trim()) return;
@@ -100,6 +173,7 @@ const ComputeTab = () => {
     setConversation(prev => [...prev, userMessage]);
     setPrompt('');
     setIsProcessing(true);
+    setProcessingProgress('Starting...');
     setError(null);
     
     // Create abort controller for cancellation
@@ -110,8 +184,18 @@ const ComputeTab = () => {
       // Get context
       const defaultContext = await simpleStorage.getItem('aster_context') || '';
       
-      // Query AI with abort signal
-      const response = await aiService.query(prompt, selectedFiles, defaultContext, controller.signal);
+      // Debug info - store the simplified file objects
+      await preparePromptForDebug(prompt, selectedFiles, defaultContext);
+      
+      // Query AI with abort signal and progress callback
+      const response = await aiService.query(
+        prompt, 
+        selectedFiles, 
+        defaultContext, 
+        controller.signal, 
+        null, // use default model
+        updateProgress // progress callback
+      );
       
       // Add AI response if not aborted
       const aiResponse = {
@@ -147,6 +231,7 @@ const ComputeTab = () => {
       }
     } finally {
       setIsProcessing(false);
+      setProcessingProgress('');
       setAbortController(null);
       if (promptInputRef.current) {
         promptInputRef.current.focus();
@@ -157,6 +242,7 @@ const ComputeTab = () => {
   // Cancel ongoing request
   const cancelRequest = () => {
     if (abortController) {
+      setProcessingProgress('Cancelling request...');
       abortController.abort();
     }
   };
@@ -176,21 +262,64 @@ const ComputeTab = () => {
   
   // Clear conversation
   const clearConversation = () => {
-    setConversation([]);
-    simpleStorage.removeItem('aster_conversation').catch(error => {
-      console.error('Failed to clear conversation:', error);
-    });
+    if (window.confirm('Are you sure you want to clear the entire conversation?')) {
+      setConversation([]);
+      simpleStorage.removeItem('aster_conversation').catch(error => {
+        console.error('Failed to clear conversation:', error);
+      });
+    }
   };
   
   // Refresh files
   const refreshFiles = async () => {
     try {
-      const filesFromStorage = await simpleStorage.getItem('standardized_files');
-      if (Array.isArray(filesFromStorage)) {
-        setFiles(filesFromStorage);
-      }
+      await loadFiles();
+      await loadModel();
     } catch (error) {
       console.error('Error refreshing files:', error);
+    }
+  };
+  
+  // Toggle debug mode
+  const toggleDebugMode = () => {
+    setDebugMode(!debugMode);
+    if (!debugMode) {
+      console.log('DEBUG MODE ENABLED - Full file content will be sent to the AI');
+    } else {
+      console.log('DEBUG MODE DISABLED');
+    }
+  };
+  
+  // View last prompt details
+  const viewLastPromptDetails = () => {
+    if (lastPromptData) {
+      const formattedData = JSON.stringify(lastPromptData, null, 2);
+      const blob = new Blob([formattedData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } else {
+      alert('No prompt data available yet. Send a message first.');
+    }
+  };
+  
+  // Download last prompt data
+  const downloadLastPromptData = () => {
+    if (lastPromptData) {
+      const formattedData = JSON.stringify(lastPromptData, null, 2);
+      const blob = new Blob([formattedData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `prompt_data_${new Date().toISOString().replace(/:/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } else {
+      alert('No prompt data available yet. Send a message first.');
     }
   };
   
@@ -204,6 +333,28 @@ const ComputeTab = () => {
           </div>
           
           <div className="flex items-center space-x-2">
+            {/* Streaming mode toggle */}
+            <button
+              className={`px-3 py-1 text-sm rounded transition-all flex items-center
+                ${useStreaming ? 'bg-primary text-background' : 'bg-surface border border-border-primary text-text-primary'}`}
+              onClick={toggleStreaming}
+              title={useStreaming ? 'Disable Streaming' : 'Enable Streaming'}
+            >
+              <FiPlay className="mr-1" />
+              Stream
+            </button>
+            
+            {/* Debug mode toggle */}
+            <button
+              className={`px-3 py-1 text-sm rounded transition-all flex items-center
+                ${debugMode ? 'bg-status-warning text-background' : 'bg-surface border border-border-primary text-text-primary'}`}
+              onClick={toggleDebugMode}
+              title={debugMode ? 'Disable Debug Mode' : 'Enable Debug Mode'}
+            >
+              <FiCode className="mr-1" />
+              Debug
+            </button>
+            
             {/* File selector toggle */}
             <button
               className={`px-3 py-1 text-sm rounded transition-all flex items-center
@@ -216,10 +367,7 @@ const ComputeTab = () => {
             
             <button
               className="px-2 py-1 bg-surface border border-border-primary rounded hover:bg-background transition-all"
-              onClick={() => {
-                loadFiles();
-                loadModel();
-              }}
+              onClick={refreshFiles}
               title="Refresh"
             >
               <FiRefreshCw />
@@ -244,7 +392,7 @@ const ComputeTab = () => {
                 <div className="h-full flex flex-col items-center justify-center text-text-secondary">
                   <FiCpu className="w-12 h-12 mb-4 opacity-50" />
                   <p className="text-center max-w-md">
-                    Start a conversation with Phi-3. Add files for context using the Files button.
+                    Start a conversation with the AI. Add files for context using the Files button.
                   </p>
                 </div>
               ) : (
@@ -275,11 +423,11 @@ const ComputeTab = () => {
               )}
               
               {isProcessing && (
-                <div className="rounded-lg p-4 bg-primary/10 border border-primary/20 animate-pulse">
-                  <div className="flex items-center justify-between">
+                <div className="rounded-lg p-4 bg-primary/10 border border-primary/20">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center">
                       <FiLoader className="animate-spin mr-2" />
-                      <span>Processing...</span>
+                      <span>{processingProgress || 'Processing...'}</span>
                     </div>
                     <button 
                       onClick={cancelRequest}
@@ -287,6 +435,11 @@ const ComputeTab = () => {
                     >
                       Cancel
                     </button>
+                  </div>
+                  
+                  {/* Progress bar that pulses */}
+                  <div className="w-full bg-background rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-primary rounded-full animate-pulse" style={{width: '100%'}}></div>
                   </div>
                 </div>
               )}
@@ -325,9 +478,27 @@ const ComputeTab = () => {
                 </button>
               </div>
               
-              <div className="mt-2 text-xs text-text-secondary flex justify-between">
-                <div>
-                  Using: Ollama <span className="text-text-primary font-mono bg-background px-1 py-0.5 rounded">{currentModel}</span>
+              <div className="mt-2 text-xs text-text-secondary flex items-center justify-between">
+                <div className="flex items-center">
+                  Using: Ollama <span className="text-text-primary font-mono bg-background px-1 py-0.5 rounded ml-1">{currentModel}</span>
+                  {debugMode && lastPromptData && (
+                    <div className="flex ml-2">
+                      <button
+                        className="text-status-warning hover:text-status-error flex items-center mr-2"
+                        onClick={viewLastPromptDetails}
+                        title="View simplified prompt data"
+                      >
+                        <FiInfo className="mr-1" /> View
+                      </button>
+                      <button
+                        className="text-status-warning hover:text-status-error flex items-center"
+                        onClick={downloadLastPromptData}
+                        title="Download full prompt data with file content"
+                      >
+                        <FiDownload className="mr-1" /> Download
+                      </button>
+                    </div>
+                  )}
                 </div>
                 
                 <button
@@ -356,16 +527,27 @@ const ComputeTab = () => {
               )}
               
               <div className="mt-2 flex justify-between items-center">
-                <button
-                  className="text-xs text-text-secondary hover:text-status-error"
-                  onClick={clearConversation}
-                >
-                  Clear conversation
-                </button>
+                {debugMode && (
+                  <span className="text-xs text-status-warning flex items-center">
+                    <FiCode className="mr-1" /> Debug Mode On
+                  </span>
+                )}
                 
-                <span className="text-xs text-text-secondary">
-                  {isProcessing ? 'Processing...' : 'Press Enter to send'}
-                </span>
+                {useStreaming && (
+                  <span className="text-xs text-primary flex items-center">
+                    <FiPlay className="mr-1" /> Streaming Mode On
+                  </span>
+                )}
+                
+                {processingProgress && isProcessing ? (
+                  <span className="text-xs text-text-secondary ml-auto">
+                    {processingProgress}
+                  </span>
+                ) : (
+                  <span className="text-xs text-text-secondary ml-auto">
+                    {isProcessing ? 'Processing...' : 'Press Enter to send'}
+                  </span>
+                )}
               </div>
             </div>
           </div>
