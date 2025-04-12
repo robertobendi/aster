@@ -76,7 +76,7 @@ const Home = () => {
                 ASTER
               </h1>
               <p className="text-sm text-gray-400 tracking-[0.15em] uppercase">
-                Advanced System for Text Extraction in Reinsurance
+                Advanced System for Tailored Editing for Reinsurance
               </p>
               
               <div className="h-px w-24 bg-gray-700 my-8"></div>
