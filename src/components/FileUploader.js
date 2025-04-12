@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { FiUpload, FiFileText, FiFile, FiGrid, FiX, FiCode, FiDownload, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
+import simpleStorage from '../utils/simpleStorage';
 
 // Import standardizers
 import {
@@ -148,6 +149,31 @@ const FileUploader = ({ onFilesAdded, onFilesCleared, onStartProcessing }) => {
     });
   };
 
+  // Store files in IndexedDB instead of localStorage
+  const updateStorage = async (files) => {
+    try {
+      // Only store standardized files
+      const standardizedFiles = files.filter(file => file.standardized);
+      
+      // Create a serializable version of each file (exclude the File object)
+      const serializableFiles = standardizedFiles.map(file => {
+        const { file: fileObj, ...rest } = file; // Remove the actual File object
+        return rest; // Keep all other properties intact
+      });
+      
+      // Store files in IndexedDB
+      await simpleStorage.setItem('standardized_files', serializableFiles);
+      
+      // Also store a small indicator in localStorage for quick checks
+      localStorage.setItem('has_files', 'true');
+      localStorage.setItem('files_count', serializableFiles.length.toString());
+      
+      console.log(`Saved ${serializableFiles.length} files to storage`);
+    } catch (error) {
+      console.error('Error updating storage:', error);
+    }
+  };
+
   // Standardize a single file
   const standardizeFile = async (file) => {
     try {
@@ -204,8 +230,8 @@ const FileUploader = ({ onFilesAdded, onFilesCleared, onStartProcessing }) => {
       setProcessingProgress(100);
       
       // Update the file in the files array
-      setFiles(prevFiles => 
-        prevFiles.map(f => 
+      setFiles(prevFiles => {
+        const updatedFiles = prevFiles.map(f => 
           f.id === file.id 
             ? { 
                 ...f, 
@@ -214,16 +240,21 @@ const FileUploader = ({ onFilesAdded, onFilesCleared, onStartProcessing }) => {
                 standardizedAt: new Date().toISOString() 
               } 
             : f
-        )
-      );
+        );
+        
+        // Update IndexedDB with standardized files
+        updateStorage(updatedFiles);
+        
+        return updatedFiles;
+      });
       
       return true;
     } catch (error) {
       console.error(`Error standardizing ${file.name}:`, error);
       
       // Mark file as failed
-      setFiles(prevFiles => 
-        prevFiles.map(f => 
+      setFiles(prevFiles => {
+        const updatedFiles = prevFiles.map(f => 
           f.id === file.id 
             ? { 
                 ...f, 
@@ -232,8 +263,13 @@ const FileUploader = ({ onFilesAdded, onFilesCleared, onStartProcessing }) => {
                 standardizedAt: new Date().toISOString() 
               } 
             : f
-        )
-      );
+        );
+        
+        // Update IndexedDB even with failed files
+        updateStorage(updatedFiles);
+        
+        return updatedFiles;
+      });
       
       return false;
     }
@@ -254,6 +290,9 @@ const FileUploader = ({ onFilesAdded, onFilesCleared, onStartProcessing }) => {
       for (const file of filesToProcess) {
         await standardizeFile(file);
       }
+      
+      // Update IndexedDB with all standardized files
+      await updateStorage(files);
       
       // After processing all files, notify parent component
       const standardizedFiles = files.filter(file => file.standardized);
