@@ -35,7 +35,7 @@ const openDB = () => {
  * @param {any} data - Data to store (will be stringified)
  * @returns {Promise} - Resolves when storage is complete
  */
-export const setItem = async (key, data) => {
+const setItem = async (key, data) => {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -59,7 +59,7 @@ export const setItem = async (key, data) => {
  * @param {string} key - Storage key
  * @returns {Promise<any>} - Resolves with retrieved data (parsed from JSON)
  */
-export const getItem = async (key) => {
+const getItem = async (key) => {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -90,7 +90,7 @@ export const getItem = async (key) => {
  * @param {string} key - Storage key
  * @returns {Promise} - Resolves when removal is complete
  */
-export const removeItem = async (key) => {
+const removeItem = async (key) => {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {

@@ -1,79 +1,160 @@
-import { preparePromptWithContext, simulateAIResponse } from '../utils/contextUtils';
 import simpleStorage from '../utils/simpleStorage';
 
-class AIService {
-  async getToken() {
-    try {
-      return await simpleStorage.getItem('aster_hf_token');
-    } catch (error) {
-      console.error('Error retrieving token:', error);
-      return null;
-    }
+/**
+ * Prepares the prompt with file contexts
+ */
+const preparePromptWithContext = (prompt, selectedFiles = [], defaultContext = '') => {
+  console.log("Preparing prompt with", selectedFiles.length, "files");
+  
+  let fullPrompt = prompt;
+  let systemMessage = 'You are ASTER, an AI assistant.';
+  
+  // Add default context if available
+  if (defaultContext && defaultContext.trim()) {
+    systemMessage += `\n\nAdditional context: ${defaultContext}`;
   }
   
-  async query(prompt, selectedFiles = [], defaultContext = '') {
-    const token = await this.getToken();
+  // Add file content as context
+  if (selectedFiles.length > 0) {
+    const filesContext = selectedFiles.map(file => {
+      let fileContent = '';
+      
+      // Extract meaningful content based on file type
+      if (file.jsonData) {
+        if (file.extension === 'md' && file.jsonData.content) {
+          fileContent = file.jsonData.content;
+        } else if (file.extension === 'csv' && file.jsonData.data) {
+          // For CSV, provide a sample of the data
+          const data = file.jsonData.data;
+          const sample = data.slice(0, Math.min(10, data.length));
+          fileContent = `Headers: ${file.jsonData.headers.join(', ')}\nSample data (${sample.length} of ${data.length} rows):\n`;
+          
+          sample.forEach(row => {
+            fileContent += JSON.stringify(row) + '\n';
+          });
+        } else if (file.extension === 'xlsx' && file.jsonData.sheets) {
+          // For Excel, provide info about sheets and a sample from the first sheet
+          const sheetNames = file.jsonData.sheetNames || [];
+          fileContent = `Excel file with sheets: ${sheetNames.join(', ')}\n`;
+          
+          if (sheetNames.length > 0) {
+            const firstSheet = file.jsonData.sheets[sheetNames[0]];
+            if (firstSheet && firstSheet.data) {
+              const sample = firstSheet.data.slice(0, Math.min(5, firstSheet.data.length));
+              fileContent += `Sample from ${sheetNames[0]} (${sample.length} of ${firstSheet.data.length} rows):\n`;
+              
+              sample.forEach(row => {
+                fileContent += JSON.stringify(row) + '\n';
+              });
+            }
+          }
+        } else if (file.extension === 'json') {
+          // For JSON, provide a stringified version with truncation for large objects
+          try {
+            const jsonStr = JSON.stringify(file.jsonData.data, null, 2);
+            fileContent = jsonStr.length > 2000 
+              ? jsonStr.substring(0, 2000) + '... (truncated)'
+              : jsonStr;
+          } catch (e) {
+            fileContent = 'Unable to stringify JSON content';
+          }
+        }
+      }
+      
+      return `--- FILE: ${file.name} ---\n${fileContent}\n`;
+    }).join('\n');
     
-    if (!token) {
-      return simulateAIResponse(prompt, selectedFiles);
-    }
+    fullPrompt = `I have the following files as context:\n\n${filesContext}\n\nQuestion: ${prompt}`;
+  }
+  
+  return {
+    messages: [
+      { role: 'system', content: systemMessage },
+      { role: 'user', content: fullPrompt }
+    ]
+  };
+};
+
+class AIService {
+  async query(prompt, selectedFiles = [], defaultContext = '', signal, modelOverride = null) {
+    // Get saved model or use override if provided
+    const savedModel = modelOverride || await simpleStorage.getItem('ollama_model') || 'phi3:medium';
+    
+    console.log(`AIService.query called with model: ${savedModel}`);
     
     const messageData = preparePromptWithContext(prompt, selectedFiles, defaultContext);
     
     try {
-      return await this.queryHuggingFace(messageData, token);
+      return await this.queryOllama(messageData, signal, savedModel);
     } catch (error) {
       console.error('AI query error:', error);
       throw error;
     }
   }
-  
-  async queryHuggingFace(messageData, token) {
-    const formattedPrompt = messageData.messages.map(msg => {
-      if (msg.role === 'system') return `System: ${msg.content}\n\n`;
-      if (msg.role === 'user') return `Human: ${msg.content}\n\n`;
-      if (msg.role === 'assistant') return `Assistant: ${msg.content}\n\n`;
-      return '';
-    }).join('') + 'Assistant:';
-    
-    const model = 'mistralai/Mistral-7B-Instruct-v0.2';
-    
-    const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        inputs: formattedPrompt,
-        parameters: {
-          max_new_tokens: 800,
-          temperature: 0.7,
-          return_full_text: false
-        }
-      })
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`Hugging Face API error: ${response.status}. ${errorText}`);
-    }
-    
+
+  async queryOllama(messageData, signal, modelName) {
     try {
+      // Get port from storage, default to 11434
+      const port = await simpleStorage.getItem('ollama_port') || '11434';
+      console.log(`Using Ollama port: ${port}, model: ${modelName}`);
+      
+      const formattedPrompt = messageData.messages
+        .map(msg => {
+          if (msg.role === 'system') return `System: ${msg.content}\n\n`;
+          if (msg.role === 'user') return `Human: ${msg.content}\n\n`;
+          return '';
+        })
+        .join('') + 'Assistant:';
+
+      // Log request body for debugging
+      const requestBody = {
+        model: modelName,
+        prompt: formattedPrompt,
+        options: {
+          temperature: 0.7,
+          num_ctx: 4096
+        },
+        stream: false
+      };
+      
+      // Ollama API request with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      const combinedSignal = signal || controller.signal;
+        
+      const response = await fetch(`http://localhost:${port}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+        signal: combinedSignal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Ollama API error: ${response.status}. ${errorText}`);
+      }
+
       const data = await response.json();
       
-      if (Array.isArray(data) && data[0] && data[0].generated_text) {
-        return data[0].generated_text.trim();
-      } else if (typeof data === 'object' && data.generated_text) {
-        return data.generated_text.trim();
-      } else if (typeof data === 'string') {
-        return data.trim();
+      if (!data.response) {
+        throw new Error("Invalid response from Ollama API");
       }
       
-      return JSON.stringify(data);
+      return data.response.trim();
     } catch (error) {
-      console.error('Error parsing response:', error);
-      throw new Error('Failed to parse response from Hugging Face');
+      if (error.name === 'AbortError') {
+        throw error;
+      }
+      
+      if (error.message.includes('Failed to fetch')) {
+        throw new Error('Failed to connect to Ollama. Please ensure Ollama is running on the configured port.');
+      }
+      throw error;
     }
   }
 }

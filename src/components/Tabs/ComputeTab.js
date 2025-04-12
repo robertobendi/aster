@@ -12,6 +12,8 @@ const ComputeTab = () => {
   const [showFileSelector, setShowFileSelector] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [error, setError] = useState(null);
+  const [abortController, setAbortController] = useState(null);
+  const [currentModel, setCurrentModel] = useState('Loading...');
   
   const chatContainerRef = useRef(null);
   const promptInputRef = useRef(null);
@@ -100,14 +102,18 @@ const ComputeTab = () => {
     setIsProcessing(true);
     setError(null);
     
+    // Create abort controller for cancellation
+    const controller = new AbortController();
+    setAbortController(controller);
+    
     try {
       // Get context
       const defaultContext = await simpleStorage.getItem('aster_context') || '';
       
-      // Query AI
-      const response = await aiService.query(prompt, selectedFiles, defaultContext);
+      // Query AI with abort signal
+      const response = await aiService.query(prompt, selectedFiles, defaultContext, controller.signal);
       
-      // Add AI response
+      // Add AI response if not aborted
       const aiResponse = {
         role: 'assistant',
         content: response,
@@ -117,21 +123,41 @@ const ComputeTab = () => {
       setConversation(prev => [...prev, aiResponse]);
     } catch (error) {
       console.error('Error querying AI:', error);
-      setError(error.message);
       
-      const errorMessage = {
-        role: 'system',
-        content: `Error: ${error.message}`,
-        timestamp: new Date(),
-        isError: true
-      };
-      
-      setConversation(prev => [...prev, errorMessage]);
+      // Don't show error message if request was deliberately cancelled
+      if (error.name === 'AbortError') {
+        const cancelMessage = {
+          role: 'system',
+          content: 'Request cancelled',
+          timestamp: new Date(),
+          isCancelled: true
+        };
+        setConversation(prev => [...prev, cancelMessage]);
+      } else {
+        setError(error.message);
+        
+        const errorMessage = {
+          role: 'system',
+          content: `Error: ${error.message}`,
+          timestamp: new Date(),
+          isError: true
+        };
+        
+        setConversation(prev => [...prev, errorMessage]);
+      }
     } finally {
       setIsProcessing(false);
+      setAbortController(null);
       if (promptInputRef.current) {
         promptInputRef.current.focus();
       }
+    }
+  };
+  
+  // Cancel ongoing request
+  const cancelRequest = () => {
+    if (abortController) {
+      abortController.abort();
     }
   };
   
@@ -190,8 +216,11 @@ const ComputeTab = () => {
             
             <button
               className="px-2 py-1 bg-surface border border-border-primary rounded hover:bg-background transition-all"
-              onClick={refreshFiles}
-              title="Refresh files"
+              onClick={() => {
+                loadFiles();
+                loadModel();
+              }}
+              title="Refresh"
             >
               <FiRefreshCw />
             </button>
@@ -215,7 +244,7 @@ const ComputeTab = () => {
                 <div className="h-full flex flex-col items-center justify-center text-text-secondary">
                   <FiCpu className="w-12 h-12 mb-4 opacity-50" />
                   <p className="text-center max-w-md">
-                    Start a conversation with Mistral-7B. Add files for context using the Files button.
+                    Start a conversation with Phi-3. Add files for context using the Files button.
                   </p>
                 </div>
               ) : (
@@ -247,9 +276,17 @@ const ComputeTab = () => {
               
               {isProcessing && (
                 <div className="rounded-lg p-4 bg-primary/10 border border-primary/20 animate-pulse">
-                  <div className="flex items-center">
-                    <FiLoader className="animate-spin mr-2" />
-                    <span>Processing...</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <FiLoader className="animate-spin mr-2" />
+                      <span>Processing...</span>
+                    </div>
+                    <button 
+                      onClick={cancelRequest}
+                      className="px-2 py-1 text-xs bg-surface border border-border-primary rounded hover:bg-background transition-all"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
               )}
@@ -261,7 +298,7 @@ const ComputeTab = () => {
                     <span>Error: {error}</span>
                   </div>
                   <p className="mt-2 text-sm">
-                    Please check your Hugging Face token in Settings.
+                    Please check that Ollama is running and has the {currentModel} model installed.
                   </p>
                 </div>
               )}
@@ -288,8 +325,17 @@ const ComputeTab = () => {
                 </button>
               </div>
               
-              <div className="mt-2 text-xs text-text-secondary">
-                Using: Hugging Face Mistral-7B
+              <div className="mt-2 text-xs text-text-secondary flex justify-between">
+                <div>
+                  Using: Ollama <span className="text-text-primary font-mono bg-background px-1 py-0.5 rounded">{currentModel}</span>
+                </div>
+                
+                <button
+                  className="text-text-secondary hover:text-status-error"
+                  onClick={clearConversation}
+                >
+                  Clear conversation
+                </button>
               </div>
               
               {selectedFiles.length > 0 && (
