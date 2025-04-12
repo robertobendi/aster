@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { FiUpload, FiFileText, FiFile, FiGrid, FiX, FiCode, FiDownload, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
 
-// Import standardizers (imported separately from individual files)
-// import standardizeExcel from '../utils/standardizers/excelStandardizer';
-// import standardizeMarkdown from '../utils/standardizers/markdownStandardizer';
-// import standardizeCsv from '../utils/standardizers/csvStandardizer';
-// import standardizeJson from '../utils/standardizers/jsonStandardizer';
+// Import standardizers
+import {
+  standardizeExcel,
+  standardizeMarkdown,
+  standardizeCsv,
+  standardizeJson
+} from '../utils/standardizers';
 
-const FileUploader = () => {
+const FileUploader = ({ onFilesAdded, onFilesCleared, onStartProcessing }) => {
   const [files, setFiles] = useState([]);
   const [currentFile, setCurrentFile] = useState(null);
   const [currentFileName, setCurrentFileName] = useState('');
@@ -32,6 +34,13 @@ const FileUploader = () => {
       setLibraryLoaded(true);
     }
   }, []);
+
+  // Notify parent component when files change
+  useEffect(() => {
+    if (onFilesAdded && files.length > 0) {
+      onFilesAdded(files);
+    }
+  }, [files, onFilesAdded]);
 
   // Handle file drop
   const handleDrop = (e) => {
@@ -82,7 +91,7 @@ const FileUploader = () => {
       };
     });
 
-    setFiles([...files, ...newFiles]);
+    setFiles(prevFiles => [...prevFiles, ...newFiles]);
   };
 
   // Remove file from list
@@ -96,6 +105,11 @@ const FileUploader = () => {
     setCurrentFile(null);
     setCurrentFileName('');
     setProcessingProgress(0);
+    
+    // Notify parent component
+    if (onFilesCleared) {
+      onFilesCleared();
+    }
   };
 
   // Trigger input click
@@ -143,88 +157,50 @@ const FileUploader = () => {
       
       // Read file content
       const content = await readFileContent(file);
-      setProcessingProgress(30);
+      setProcessingProgress(20);
+      
+      // Create file info object for standardizers
+      const fileInfo = {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        extension: file.extension,
+        uploadDate: file.uploadDate
+      };
+      
+      // Progress callback function
+      const updateProgress = (progress) => {
+        // Adjust progress to start from 20% (after file read)
+        // and end at 90% (reserving 10% for final steps)
+        const adjustedProgress = 20 + (progress * 0.7);
+        setProcessingProgress(Math.min(90, Math.round(adjustedProgress)));
+      };
       
       // Apply the appropriate standardizer based on file extension
       let jsonData;
       
-      // This is where you would use your standardizer modules
-      // For now, we'll just create a placeholder result
-      const baseJson = {
-        metadata: {
-          filename: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-          extension: file.extension,
-          uploadDate: file.uploadDate.toISOString(),
-          conversionDate: new Date().toISOString(),
-          standardizationId: `std-${file.extension}-${Date.now()}`
-        }
-      };
-      
-      // Simulate processing delay for visual feedback
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setProcessingProgress(60);
-      
-      // Create standardized data based on file type
       switch (file.extension) {
         case 'json':
-          jsonData = {
-            ...baseJson,
-            data: JSON.parse(content),
-            format: 'json'
-          };
+          jsonData = await standardizeJson(content, fileInfo, updateProgress);
           break;
         case 'md':
-          jsonData = {
-            ...baseJson,
-            data: { content },
-            format: 'markdown'
-          };
+          jsonData = await standardizeMarkdown(content, fileInfo, updateProgress);
           break;
         case 'csv':
-          const lines = content.split('\n');
-          const headers = lines[0].split(',').map(h => h.trim());
-          const data = lines.slice(1)
-            .filter(line => line.trim())
-            .map(line => {
-              const values = line.split(',');
-              return headers.reduce((obj, header, index) => {
-                obj[header] = values[index] || '';
-                return obj;
-              }, {});
-            });
-          jsonData = {
-            ...baseJson,
-            data,
-            format: 'tabular'
-          };
+          jsonData = await standardizeCsv(content, fileInfo, updateProgress);
           break;
         case 'xlsx':
         case 'xls':
-          if (window.XLSX) {
-            const workbook = window.XLSX.read(content, { type: 'array' });
-            const firstSheet = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheet];
-            const data = window.XLSX.utils.sheet_to_json(worksheet);
-            jsonData = {
-              ...baseJson,
-              data,
-              format: 'excel'
-            };
-          } else {
+          if (!libraryLoaded) {
             throw new Error('SheetJS library not loaded');
           }
+          jsonData = await standardizeExcel(content, fileInfo, updateProgress);
           break;
         default:
-          jsonData = {
-            ...baseJson,
-            data: { content },
-            format: 'unknown'
-          };
+          throw new Error(`Unsupported file type: ${file.extension}`);
       }
       
-      // Add standardized data to file object
+      // Final processing steps
       setProcessingProgress(100);
       
       // Update the file in the files array
@@ -277,6 +253,12 @@ const FileUploader = () => {
       
       for (const file of filesToProcess) {
         await standardizeFile(file);
+      }
+      
+      // After processing all files, notify parent component
+      const standardizedFiles = files.filter(file => file.standardized);
+      if (onStartProcessing && standardizedFiles.length > 0) {
+        onStartProcessing(standardizedFiles);
       }
     } catch (error) {
       console.error('Error during standardization:', error);
@@ -356,7 +338,7 @@ const FileUploader = () => {
       
       {/* Drag and drop area */}
       <div 
-        className="mt-4 border-2 border-dashed rounded-lg p-8 transition-all text-center border-border-secondary"
+        className="mt-4 border-2 border-dashed rounded-lg p-8 transition-all text-center border-border-secondary hover:border-text-secondary"
         onDragEnter={handleDrag}
         onDragOver={handleDrag}
         onDragLeave={handleDrag}

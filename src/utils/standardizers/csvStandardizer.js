@@ -1,348 +1,153 @@
-/**
- * CSV Standardizer - Converts CSV files to standardized JSON format
- */
+// csvStandardizer.js
+import { createBaseMetadata } from './utils';
 
 /**
- * Standardize CSV file to JSON format
- * @param {string} content - The raw CSV content
- * @param {Object} fileInfo - Information about the file
- * @returns {Object} Standardized JSON representation
+ * Standardize CSV to JSON format
+ * @param {string} content - The CSV file content
+ * @param {Object} fileInfo - File metadata
+ * @param {Function} progressCallback - Callback for progress updates
+ * @returns {Object} Standardized JSON with CSV data
  */
-const standardizeCsv = (content, fileInfo) => {
-    // Create base metadata
+const standardizeCsv = async (content, fileInfo, progressCallback = () => {}) => {
+  progressCallback(10);
+  
+  try {
+    // Create base metadata object
     const baseJson = createBaseMetadata(fileInfo);
+    progressCallback(20);
     
+    // Use PapaParse for robust CSV parsing if available
     try {
-      // Handle empty content case
-      if (!content || content.trim() === '') {
-        return {
-          ...baseJson,
-          data: [],
-          format: 'tabular',
-          structure: {
-            headers: [],
-            rowCount: 0,
-            columnCount: 0
-          }
-        };
-      }
+      // Dynamic import for PapaParse
+      const Papa = await import('papaparse');
       
-      // Split content into lines and filter out empty lines
-      const lines = content.split('\n').filter(line => line.trim() !== '');
-      
-      // Handle empty file case
-      if (lines.length === 0) {
-        return {
-          ...baseJson,
-          data: [],
-          format: 'tabular',
-          structure: {
-            headers: [],
-            rowCount: 0,
-            columnCount: 0
-          }
-        };
-      }
-      
-      // Detect delimiter
-      const delimiter = detectDelimiter(lines[0]);
-      
-      // Parse headers (first line)
-      const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
-      
-      // Parse data rows
-      const data = lines.slice(1).map((line, rowIndex) => {
-        // Split by delimiter but respect quoted values
-        const values = parseCSVLine(line, delimiter);
-        
-        // Create object with header keys
-        const rowData = {};
-        headers.forEach((header, index) => {
-          // Get value or empty string if not present
-          const value = index < values.length ? values[index] : '';
-          rowData[header] = value;
-        });
-        
-        // Add unique row ID
-        rowData._rowId = `row-${rowIndex}`;
-        
-        return rowData;
+      // Parse CSV with PapaParse's config for best results
+      const parseResult = Papa.default.parse(content, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: true,
+        trimHeaders: true,
       });
       
-      // Analyze data types and generate statistics
-      const analysis = analyzeCSVData(data, headers);
+      progressCallback(50);
       
-      return { 
-        ...baseJson, 
-        data, 
-        format: 'tabular',
-        structure: {
-          headers,
-          rowCount: data.length,
-          columnCount: headers.length,
-          delimiter
-        },
-        analysis
-      };
-    } catch (error) {
-      console.error('Error standardizing CSV file:', error);
-      return {
-        ...baseJson,
-        error: `Failed to standardize CSV file: ${error.message}`,
-        format: 'error'
-      };
-    }
-  };
-  
-  /**
-   * Parse a CSV line respecting quoted values
-   * @param {string} line - CSV line to parse
-   * @param {string} delimiter - Delimiter used in the CSV
-   * @returns {Array} Array of values from the line
-   */
-  const parseCSVLine = (line, delimiter) => {
-    // If we have a simple line with no quotes, just split by delimiter
-    if (!line.includes('"')) {
-      return line.split(delimiter).map(v => v.trim());
-    }
-    
-    // For lines with quotes, do more careful parsing
-    const values = [];
-    let inQuotes = false;
-    let currentValue = '';
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
+      // Analyze the parsed data
+      const headers = parseResult.meta.fields || [];
+      const data = parseResult.data || [];
       
-      // Handle quotes
-      if (char === '"') {
-        // If we see a double quote inside quotes, it's an escaped quote
-        if (inQuotes && line[i+1] === '"') {
-          currentValue += '"';
-          i++; // Skip the next quote
-        } else {
-          // Toggle quote state
-          inQuotes = !inQuotes;
-        }
-      }
-      // Handle delimiters
-      else if (char === delimiter && !inQuotes) {
-        values.push(currentValue.trim());
-        currentValue = '';
-      }
-      // Handle normal characters
-      else {
-        currentValue += char;
-      }
-    }
-    
-    // Add the last value
-    values.push(currentValue.trim());
-    
-    return values;
-  };
-  
-  /**
-   * Detect the delimiter used in a CSV file
-   * @param {string} firstLine - First line of the CSV file
-   * @returns {string} Detected delimiter
-   */
-  const detectDelimiter = (firstLine) => {
-    const possibleDelimiters = [',', ';', '\t', '|'];
-    const counts = {};
-    
-    // If line has quoted sections, we need to ignore delimiters within quotes
-    if (firstLine.includes('"')) {
-      let inQuotes = false;
+      // Calculate column statistics
+      const columnStats = {};
       
-      for (let i = 0; i < firstLine.length; i++) {
-        const char = firstLine[i];
+      headers.forEach(header => {
+        const values = data.map(row => row[header]).filter(val => val !== null && val !== undefined);
         
-        // Toggle quote state (and handle escaped quotes)
-        if (char === '"') {
-          if (inQuotes && firstLine[i+1] === '"') {
-            i++; // Skip the next quote (it's escaped)
-          } else {
-            inQuotes = !inQuotes;
+        // Determine column type
+        const types = values.reduce((acc, val) => {
+          const type = typeof val;
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {});
+        
+        // Get the most common type
+        const mostCommonType = Object.entries(types)
+          .sort((a, b) => b[1] - a[1])
+          .map(entry => entry[0])[0] || 'unknown';
+        
+        // Calculate numeric stats if applicable
+        let numericStats = {};
+        if (mostCommonType === 'number') {
+          const numericValues = values.filter(v => typeof v === 'number');
+          if (numericValues.length > 0) {
+            const sum = numericValues.reduce((acc, val) => acc + val, 0);
+            numericStats = {
+              min: Math.min(...numericValues),
+              max: Math.max(...numericValues),
+              avg: sum / numericValues.length,
+              sum: sum
+            };
           }
         }
-        // Count possible delimiters outside quotes
-        else if (!inQuotes && possibleDelimiters.includes(char)) {
-          counts[char] = (counts[char] || 0) + 1;
+        
+        columnStats[header] = {
+          type: mostCommonType,
+          nonEmptyCount: values.length,
+          uniqueValues: new Set(values).size,
+          ...numericStats
+        };
+      });
+      
+      progressCallback(80);
+      
+      return {
+        ...baseJson,
+        format: 'csv',
+        data: data,
+        headers: headers,
+        analysis: {
+          rowCount: data.length,
+          columnCount: headers.length,
+          columns: columnStats,
+          parseInfo: {
+            errors: parseResult.errors,
+            delimiter: parseResult.meta.delimiter
+          }
         }
-      }
-    } else {
-      // Simple counting for unquoted lines
-      for (const delimiter of possibleDelimiters) {
-        counts[delimiter] = firstLine.split(delimiter).length - 1;
-      }
-    }
-    
-    // Find the delimiter with the highest count
-    let maxCount = 0;
-    let detectedDelimiter = ','; // Default
-    
-    for (const delimiter of possibleDelimiters) {
-      if (counts[delimiter] > maxCount) {
-        maxCount = counts[delimiter];
-        detectedDelimiter = delimiter;
-      }
-    }
-    
-    return detectedDelimiter;
-  };
-  
-  /**
-   * Analyze CSV data to determine column types and statistics
-   * @param {Array} data - Array of row objects
-   * @param {Array} headers - Column headers
-   * @returns {Object} Analysis of CSV data
-   */
-  const analyzeCSVData = (data, headers) => {
-    // Initialize column analysis
-    const columns = {};
-    
-    headers.forEach(header => {
-      // Get all values for this column
-      const values = data.map(row => row[header]);
-      const nonEmptyValues = values.filter(val => val !== null && val !== undefined && val !== '');
+      };
+    } catch (error) {
+      // Fallback to basic parsing if PapaParse fails or isn't available
+      progressCallback(30);
       
-      // Determine data type
-      const typeAnalysis = inferColumnType(nonEmptyValues);
+      // Basic CSV parsing
+      const lines = content.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      const data = [];
       
-      // Generate statistics based on the type
-      let statistics = {};
-      
-      if (typeAnalysis.inferredType === 'numeric') {
-        const numbers = nonEmptyValues.map(v => parseFloat(v)).filter(n => !isNaN(n));
-        if (numbers.length > 0) {
-          statistics = {
-            min: Math.min(...numbers),
-            max: Math.max(...numbers),
-            avg: numbers.reduce((sum, n) => sum + n, 0) / numbers.length,
-            sum: numbers.reduce((sum, n) => sum + n, 0)
-          };
-        }
-      } else if (typeAnalysis.inferredType === 'string') {
-        // Get frequency of values if not too many unique values
-        const valueFrequency = {};
-        nonEmptyValues.forEach(val => {
-          valueFrequency[val] = (valueFrequency[val] || 0) + 1;
+      // Parse data rows
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '') continue;
+        
+        const values = lines[i].split(',');
+        const row = {};
+        
+        headers.forEach((header, index) => {
+          let value = values[index] ? values[index].trim() : '';
+          
+          // Try to convert numeric values
+          if (value !== '' && !isNaN(value)) {
+            value = Number(value);
+          }
+          
+          row[header] = value;
         });
         
-        const uniqueValueCount = Object.keys(valueFrequency).length;
-        
-        statistics = {
-          uniqueValueCount,
-          // Only include frequency distribution if not too many unique values
-          valueFrequency: uniqueValueCount <= 20 ? valueFrequency : null,
-          minLength: nonEmptyValues.length > 0 ? Math.min(...nonEmptyValues.map(v => v.length)) : 0,
-          maxLength: nonEmptyValues.length > 0 ? Math.max(...nonEmptyValues.map(v => v.length)) : 0,
-        };
+        data.push(row);
       }
       
-      columns[header] = {
-        ...typeAnalysis,
-        statistics
-      };
-    });
-    
-    return {
-      columns,
-      totalRows: data.length,
-      totalColumns: headers.length
-    };
-  };
-  
-  /**
-   * Infer the data type of a column based on its values
-   * @param {Array} values - Column values
-   * @returns {Object} Type analysis
-   */
-  const inferColumnType = (values) => {
-    if (values.length === 0) {
-      return { inferredType: 'empty', confidence: 1 };
-    }
-    
-    let numericCount = 0;
-    let dateCount = 0;
-    let booleanCount = 0;
-    
-    // Regular expressions for type detection
-    const numericRegex = /^-?\d+(\.\d+)?$/;
-    const dateRegex = /^(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})$/;
-    const booleanValues = ['true', 'false', 'yes', 'no', '1', '0', 'y', 'n'];
-    
-    values.forEach(val => {
-      const valLower = (typeof val === 'string' ? val.toLowerCase() : String(val));
+      progressCallback(70);
       
-      if (numericRegex.test(valLower)) {
-        numericCount++;
-      }
-      
-      if (dateRegex.test(valLower) || !isNaN(Date.parse(valLower))) {
-        dateCount++;
-      }
-      
-      if (booleanValues.includes(valLower)) {
-        booleanCount++;
-      }
-    });
-    
-    const total = values.length;
-    
-    // Determine the most likely type
-    if (numericCount / total > 0.9) {
-      return { 
-        inferredType: 'numeric', 
-        confidence: numericCount / total,
-        patterns: { numeric: numericCount, total }
-      };
-    } else if (dateCount / total > 0.9) {
-      return { 
-        inferredType: 'date', 
-        confidence: dateCount / total,
-        patterns: { date: dateCount, total }
-      };
-    } else if (booleanCount / total > 0.9) {
-      return { 
-        inferredType: 'boolean', 
-        confidence: booleanCount / total,
-        patterns: { boolean: booleanCount, total }
-      };
-    } else {
-      return { 
-        inferredType: 'string', 
-        confidence: 1,
-        patterns: { 
-          numeric: numericCount, 
-          date: dateCount, 
-          boolean: booleanCount, 
-          total 
+      return {
+        ...baseJson,
+        format: 'csv',
+        data: data,
+        headers: headers,
+        analysis: {
+          rowCount: data.length,
+          columnCount: headers.length
+        },
+        parseInfo: {
+          method: 'basic',
+          papaParseError: error.message
         }
       };
     }
-  };
-  
-  /**
-   * Create base metadata for the standardized file
-   * @param {Object} fileInfo - Information about the file 
-   * @returns {Object} Base metadata object
-   */
-  const createBaseMetadata = (fileInfo) => {
-    const { name, type, size, extension, uploadDate } = fileInfo;
-    
+  } catch (error) {
+    console.error('CSV standardization error:', error);
     return {
-      metadata: {
-        filename: name,
-        fileType: type,
-        fileSize: size,
-        extension,
-        uploadDate: uploadDate.toISOString(),
-        conversionDate: new Date().toISOString(),
-        standardizationId: `std-csv-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-      }
+      ...createBaseMetadata(fileInfo),
+      format: 'error',
+      error: error.message
     };
-  };
-  
-  export default standardizeCsv;
+  }
+};
+
+export default standardizeCsv;

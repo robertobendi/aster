@@ -1,226 +1,146 @@
-/**
- * Excel Standardizer - Converts Excel (.xlsx/.xls) files to standardized JSON format
- */
+// excelStandardizer.js
+import { createBaseMetadata } from './utils';
 
 /**
  * Standardize Excel file to JSON format
  * @param {ArrayBuffer} content - The Excel file content as ArrayBuffer
- * @param {Object} fileInfo - Information about the file
- * @returns {Object} Standardized JSON representation
+ * @param {Object} fileInfo - File metadata
+ * @param {Function} progressCallback - Optional callback to track progress %
+ * @returns {Object} Standardized JSON object
  */
-const standardizeExcel = (content, fileInfo) => {
-    // Create base metadata
-    const baseJson = createBaseMetadata(fileInfo);
-    
-    try {
-      // Make sure SheetJS is loaded
-      if (!window.XLSX) {
-        throw new Error('SheetJS library not loaded. Cannot standardize Excel file.');
-      }
-      
-      // Parse with SheetJS
-      const workbook = window.XLSX.read(content, { 
-        type: 'array',
-        cellDates: true, 
-        cellStyles: true,
-        cellNF: true
-      });
-      
-      // Get sheet names
-      const sheetNames = workbook.SheetNames;
-      
-      // Process each sheet
-      const sheets = {};
-      sheetNames.forEach(sheetName => {
-        const worksheet = workbook.Sheets[sheetName];
-        
-        // Get sheet dimensions
-        const range = window.XLSX.utils.decode_range(worksheet['!ref'] || 'A1:A1');
-        const dimensions = {
-          startRow: range.s.r,
-          endRow: range.e.r,
-          startCol: range.s.c,
-          endCol: range.e.c,
-          totalRows: range.e.r - range.s.r + 1,
-          totalCols: range.e.c - range.s.c + 1
-        };
-        
-        // Convert to JSON with headers as keys
-        const jsonData = window.XLSX.utils.sheet_to_json(worksheet, {
-          defval: null,
-          raw: false
-        });
-        
-        // Get header row if available
-        let headers = [];
-        if (jsonData.length > 0) {
-          headers = Object.keys(jsonData[0]);
-        }
-        
-        // Also get the raw data with headers in first row
-        const rawData = window.XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,
-          defval: null,
-          raw: false
-        });
-        
-        // Get formulas if any
-        const formulas = {};
-        Object.keys(worksheet).forEach(cell => {
-          if (cell[0] !== '!' && worksheet[cell].f) {
-            formulas[cell] = worksheet[cell].f;
-          }
-        });
+const standardizeExcel = async (content, fileInfo, progressCallback = () => {}) => {
+  progressCallback(10);
+  const baseJson = createBaseMetadata(fileInfo);
   
-        // Store sheet data
-        sheets[sheetName] = {
-          data: jsonData,
-          rawData: rawData,
-          headers: headers,
-          dimensions: dimensions,
-          formulas: Object.keys(formulas).length > 0 ? formulas : null
-        };
-      });
-      
-      // Analyze data types for better integration with AI systems
-      const dataAnalysis = analyzeExcelData(sheets);
-      
-      return {
-        ...baseJson,
-        format: 'excel',
-        sheetNames: sheetNames,
-        sheets: sheets,
-        activeSheet: sheetNames[0],
-        totalSheets: sheetNames.length,
-        parseInfo: {
-          parser: 'SheetJS',
-          version: window.XLSX.version,
-          success: true
-        },
-        dataAnalysis
-      };
-    } catch (error) {
-      console.error('Error standardizing Excel file:', error);
-      return {
-        ...baseJson,
-        error: `Failed to standardize Excel file: ${error.message}`,
-        format: 'error'
-      };
-    }
-  };
+  if (!window.XLSX) {
+    throw new Error("SheetJS library not found in window scope");
+  }
   
-  /**
-   * Analyze Excel data to determine column types and statistics
-   * @param {Object} sheets - Processed sheets from the Excel file
-   * @returns {Object} Analysis of the Excel data
-   */
-  const analyzeExcelData = (sheets) => {
-    const analysis = {};
-    
-    Object.keys(sheets).forEach(sheetName => {
-      const sheet = sheets[sheetName];
-      const columnTypes = {};
-      const columnStats = {};
-      
-      if (sheet.data.length > 0) {
-        // Get column names from the first row
-        const columns = sheet.headers;
-        
-        // Analyze each column
-        columns.forEach(column => {
-          const values = sheet.data.map(row => row[column]);
-          const nonEmptyValues = values.filter(val => val !== null && val !== undefined && val !== '');
-          
-          // Determine column type
-          let type = 'mixed';
-          let numericCount = 0;
-          let dateCount = 0;
-          let booleanCount = 0;
-          let stringCount = 0;
-          
-          nonEmptyValues.forEach(val => {
-            if (typeof val === 'number' || !isNaN(Number(val))) {
-              numericCount++;
-            } else if (val instanceof Date || !isNaN(Date.parse(val))) {
-              dateCount++;
-            } else if (val === true || val === false || val === 'true' || val === 'false') {
-              booleanCount++;
-            } else {
-              stringCount++;
-            }
-          });
-          
-          const total = nonEmptyValues.length;
-          
-          if (total === 0) {
-            type = 'empty';
-          } else if (numericCount / total > 0.75) {
-            type = 'numeric';
-          } else if (dateCount / total > 0.75) {
-            type = 'date';
-          } else if (booleanCount / total > 0.75) {
-            type = 'boolean';
-          } else if (stringCount / total > 0.75) {
-            type = 'string';
-          }
-          
-          // Basic statistics for numeric columns
-          let stats = {};
-          if (type === 'numeric') {
-            const numbers = nonEmptyValues.map(v => Number(v)).filter(n => !isNaN(n));
-            if (numbers.length > 0) {
-              stats = {
-                min: Math.min(...numbers),
-                max: Math.max(...numbers),
-                avg: numbers.reduce((sum, n) => sum + n, 0) / numbers.length,
-                sum: numbers.reduce((sum, n) => sum + n, 0)
-              };
-            }
-          }
-          
-          columnTypes[column] = {
-            inferredType: type,
-            nonEmptyCount: nonEmptyValues.length,
-            totalCount: values.length,
-            completeness: nonEmptyValues.length / values.length
-          };
-          
-          if (Object.keys(stats).length > 0) {
-            columnStats[column] = stats;
-          }
-        });
-      }
-      
-      analysis[sheetName] = {
-        columnTypes,
-        columnStats,
-        rowCount: sheet.data.length,
-        totalCells: sheet.data.length * sheet.headers.length
-      };
+  try {
+    // Use SheetJS to parse Excel file
+    const workbook = window.XLSX.read(content, {
+      type: 'array',
+      cellDates: true,
+      cellNF: false,
+      cellStyles: false
     });
     
-    return analysis;
-  };
-  
-  /**
-   * Create base metadata for the standardized file
-   * @param {Object} fileInfo - Information about the file 
-   * @returns {Object} Base metadata object
-   */
-  const createBaseMetadata = (fileInfo) => {
-    const { name, type, size, extension, uploadDate } = fileInfo;
+    progressCallback(40);
+    
+    const sheetNames = workbook.SheetNames;
+    const sheets = {};
+    
+    // Process each sheet
+    for (let i = 0; i < sheetNames.length; i++) {
+      const sheetName = sheetNames[i];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      if (!worksheet || !worksheet['!ref']) {
+        sheets[sheetName] = {
+          error: 'Empty or malformed sheet.',
+          data: [],
+          headers: [],
+        };
+        continue;
+      }
+      
+      // Convert to JSON
+      const data = window.XLSX.utils.sheet_to_json(worksheet, { 
+        defval: null,
+        raw: false
+      });
+      
+      // Extract headers
+      const headers = data.length > 0 ? Object.keys(data[0]) : [];
+      
+      // Extract dimensions
+      const range = window.XLSX.utils.decode_range(worksheet['!ref']);
+      const dimensions = {
+        totalRows: range.e.r - range.s.r + 1,
+        totalCols: range.e.c - range.s.c + 1
+      };
+      
+      sheets[sheetName] = {
+        data,
+        headers,
+        dimensions
+      };
+      
+      progressCallback(50 + (40 * (i + 1)) / sheetNames.length);
+    }
+    
+    // Create column statistics for the first sheet
+    const firstSheetName = sheetNames[0];
+    if (sheets[firstSheetName] && sheets[firstSheetName].data.length > 0) {
+      const firstSheet = sheets[firstSheetName];
+      const columnStats = {};
+      
+      firstSheet.headers.forEach(header => {
+        const values = firstSheet.data.map(row => row[header]);
+        const nonEmpty = values.filter(v => v !== null && v !== undefined && v !== '');
+        
+        // Determine column type
+        const typeCounts = {
+          numeric: 0,
+          string: 0,
+          date: 0,
+          boolean: 0,
+        };
+        
+        nonEmpty.forEach(val => {
+          if (typeof val === 'number') typeCounts.numeric++;
+          else if (typeof val === 'boolean') typeCounts.boolean++;
+          else if (typeof val === 'string' && !isNaN(Date.parse(val))) typeCounts.date++;
+          else typeCounts.string++;
+        });
+        
+        const maxType = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'unknown';
+        
+        columnStats[header] = {
+          inferredType: maxType,
+          nonEmptyCount: nonEmpty.length,
+          completeness: nonEmpty.length / values.length,
+        };
+        
+        if (maxType === 'numeric') {
+          const nums = nonEmpty.map(n => Number(n)).filter(n => !isNaN(n));
+          if (nums.length > 0) {
+            const sum = nums.reduce((a, b) => a + b, 0);
+            columnStats[header].stats = {
+              min: Math.min(...nums),
+              max: Math.max(...nums),
+              sum,
+              avg: sum / nums.length
+            };
+          }
+        }
+      });
+      
+      sheets[firstSheetName].columnStats = columnStats;
+    }
+    
+    progressCallback(95);
     
     return {
-      metadata: {
-        filename: name,
-        fileType: type,
-        fileSize: size,
-        extension,
-        uploadDate: uploadDate.toISOString(),
-        conversionDate: new Date().toISOString(),
-        standardizationId: `std-excel-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+      ...baseJson,
+      format: 'excel',
+      sheets,
+      sheetNames,
+      totalSheets: sheetNames.length,
+      parseInfo: {
+        parser: 'SheetJS',
+        version: window.XLSX.version,
+        success: true
       }
     };
-  };
-  
-  export default standardizeExcel;
+  } catch (error) {
+    console.error('Excel parse error:', error);
+    return {
+      ...baseJson,
+      format: 'error',
+      error: error.message,
+    };
+  }
+};
+
+export default standardizeExcel;

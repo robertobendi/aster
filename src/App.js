@@ -3,7 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 import Home from "./pages/Home";
-import Dashboard from "./pages/Dashboard";
+import Main from "./pages/Main"; // Updated import
 
 function App() {
   return (
@@ -12,7 +12,7 @@ function App() {
       <main className="flex-grow">
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Main />} /> {/* Updated component */}
         </Routes>
       </main>
       <Footer />

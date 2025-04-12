@@ -1,19 +1,12 @@
-import { useState } from 'react';
 import { FiUpload, FiBarChart2 } from 'react-icons/fi';
-import { Tabs, TabList, TabButton, TabPanel, TabPanels } from '../components/Tabs';
-import FilesTab from './FilesTab';
-import DashboardTab from './DashboardTab';
+import { Tabs, TabList, TabButton, TabPanel, TabPanels } from '../components/Tabs/Tabs.js';
+import FilesTab from '../components/Tabs/FilesTab';
+import DashboardTab from '../components/Tabs/DashboardTab';
 
 const Main = () => {
   return (
     <div className="min-h-screen bg-background text-text-primary">
-      <div className="max-w-container mx-auto px-container-default py-8">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-medium">ASTER Central Nexus</h1>
-          <div className="text-sm text-text-secondary">
-            <span>AI-Powered Reinsurance Underwriting</span>
-          </div>
-        </div>
+      <div className="max-w-container mx-auto px-container-default">
         
         <Tabs defaultTab="files">
           <TabList>
