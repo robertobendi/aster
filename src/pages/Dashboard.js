@@ -1,202 +1,339 @@
-import { useState, useEffect } from 'react';
-import { DndProvider } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
+import { useState } from 'react';
+import { FiDatabase, FiCode, FiDownload, FiExternalLink, FiGrid, FiUpload, FiBarChart2, FiCpu } from 'react-icons/fi';
+import FileUploader from '../components/FileUploader';
+import { Tabs, TabList, TabButton, TabPanel, TabPanels } from '../components/Tabs';
 
-// Icons component for consistent icon usage
-const DashboardIcon = () => (
-  <svg className="w-8 h-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      strokeWidth={1.5} 
-      d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" 
-    />
-  </svg>
-);
-
-// Empty state component
-const EmptyState = ({ onAddBlock }) => (
-  <div className="bg-surface border border-border-primary rounded p-12 text-center flex flex-col items-center justify-center">
-    <DashboardIcon />
-    <h3 className="mt-6 text-lg font-medium text-text-primary">No dashboard blocks yet</h3>
-    <p className="mt-2 text-text-secondary">Get started by adding your first dashboard block.</p>
-    <button 
-      className="mt-8 px-6 py-2 bg-surface border border-border-primary text-text-primary rounded hover:bg-background transition-all"
-      onClick={onAddBlock}
-    >
-      Add Your First Block
-    </button>
-  </div>
-);
-
-// Block container component for reusability
-const BlockContainer = ({ children, className = "" }) => (
-  <div className={`bg-surface border border-border-primary p-6 rounded ${className}`}>
-    {children}
-  </div>
-);
-
-// Placeholder block component
-const PlaceholderBlock = ({ number }) => (
-  <BlockContainer className="flex items-center justify-center border-dashed min-h-[180px]">
-    <p className="text-text-secondary">Block placeholder {number}</p>
-  </BlockContainer>
-);
-
-// Main Dashboard component
 const Dashboard = () => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [blocks, setBlocks] = useState([]);
-  const [showGrid, setShowGrid] = useState(true);
+  // State for processing and output
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [processingStatus, setProcessingStatus] = useState('idle'); // 'idle', 'processing', 'complete'
+  const [processedData, setProcessedData] = useState(null);
+  const [showJsonPreview, setShowJsonPreview] = useState(false);
+  const [selectedJsonFile, setSelectedJsonFile] = useState(null);
 
-  // Simulating data fetch
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        // Placeholder data structure for blocks
-        const mockData = [
-          // You'll replace these with actual block data
-        ];
-        
-        setBlocks(mockData);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        setIsLoading(false);
+  // Handle when files are added in the FileUploader component
+  const handleFilesAdded = (files) => {
+    setUploadedFiles(files);
+    setProcessingStatus('idle');
+    setProcessedData(null);
+    setShowJsonPreview(false);
+    setSelectedJsonFile(null);
+  };
+
+  // Handle when files are cleared
+  const handleFilesCleared = () => {
+    setUploadedFiles([]);
+    setProcessingStatus('idle');
+    setProcessedData(null);
+    setShowJsonPreview(false);
+    setSelectedJsonFile(null);
+  };
+
+  // Receive standardized files without processing
+  const startProcessing = (standardizedFiles) => {
+    setProcessingStatus('complete');
+    
+    setProcessedData({
+      fileCount: standardizedFiles.length,
+      totalSize: standardizedFiles.reduce((sum, file) => sum + file.size, 0),
+      types: Array.from(new Set(standardizedFiles.map(file => file.extension))),
+      timestamp: new Date().toISOString(),
+      standardizedFiles: standardizedFiles.map(file => ({
+        id: file.id,
+        name: file.name,
+        format: file.jsonData?.format || 'unknown',
+        size: file.jsonData ? JSON.stringify(file.jsonData).length : 0,
+        jsonData: file.jsonData
+      }))
+    });
+  };
+
+  // Toggle JSON preview for a specific file
+  const toggleJsonPreview = (fileId) => {
+    if (selectedJsonFile?.id === fileId) {
+      setShowJsonPreview(false);
+      setSelectedJsonFile(null);
+    } else {
+      const file = processedData.standardizedFiles.find(f => f.id === fileId);
+      if (file) {
+        setSelectedJsonFile(file);
+        setShowJsonPreview(true);
       }
-    };
-
-    // Simulate loading time
-    const timer = setTimeout(() => {
-      fetchDashboardData();
-    }, 800);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Function to handle adding a new block
-  const handleAddBlock = () => {
-    console.log("Opening add block dialog");
-    // This will be implemented later when you create the block components
+    }
   };
 
-  // Function to remove a block
-  const handleRemoveBlock = (blockId) => {
-    setBlocks(blocks.filter(block => block.id !== blockId));
+  // Format bytes to human readable format
+  const formatBytes = (bytes, decimals = 1) => {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
-
-  // Function to update a block's data
-  const handleUpdateBlock = (blockId, newData) => {
-    setBlocks(blocks.map(block => 
-      block.id === blockId ? { ...block, ...newData } : block
-    ));
-  };
-
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-text-secondary border-t-text-primary"></div>
-      </div>
-    );
-  }
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="min-h-screen bg-background text-text-primary">
-        {/* Dashboard Header */}
-        <div className="border-b border-border-primary">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <h1 className="text-2xl font-medium">Dashboard</h1>
-            
-            <button 
-              className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all"
-              onClick={handleAddBlock}
-            >
-              Add Block
-            </button>
+    <div className="min-h-screen bg-background text-text-primary">
+      <div className="max-w-container mx-auto px-container-default py-8">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-2xl font-medium">ASTER Document Processing</h1>
+          <div className="text-sm text-text-secondary">
+            <span>Central Nexus • AI-Powered Reinsurance Underwriting</span>
           </div>
         </div>
-
-        {/* Dashboard Content */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Point grid background - visible when showGrid is true */}
-          {showGrid && (
-            <div className="fixed inset-0 z-0 pointer-events-none" 
-                 style={{
-                   backgroundImage: 'radial-gradient(circle, #333 1px, transparent 1px)',
-                   backgroundSize: '24px 24px',
-                   opacity: 0.2
-                 }} />
-          )}
-
-          {/* Empty state when no blocks */}
-          {blocks.length === 0 && (
-            <EmptyState onAddBlock={handleAddBlock} />
-          )}
-
-          {/* Grid for blocks - will only show when there are blocks */}
-          {blocks.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {blocks.map((block, index) => (
-                <div key={block.id}>
-                  {/* You'll replace this with actual block components */}
-                  <p>Block {index + 1}</p>
+        
+        <Tabs defaultTab="upload">
+          <TabList>
+            <TabButton 
+              value="upload" 
+              label={
+                <div className="flex items-center">
+                  <FiUpload className="mr-2" /> Upload & Standardize
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Placeholder grid - will show regardless for development */}
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <PlaceholderBlock number={1} />
-            <PlaceholderBlock number={2} />
-            <PlaceholderBlock number={3} />
-          </div>
+              } 
+            />
+            <TabButton 
+              value="dashboard" 
+              label={
+                <div className="flex items-center">
+                  <FiBarChart2 className="mr-2" /> Dashboard
+                </div>
+              } 
+            />
+          </TabList>
           
-          {/* Modular areas for future block layouts */}
-          <div className="mt-12 space-y-6">
-            {/* Full width block area */}
-            <BlockContainer className="min-h-[220px] flex items-center justify-center border-dashed">
-              <p className="text-text-secondary">Full width block area</p>
-            </BlockContainer>
+          <TabPanels>
+            <TabPanel value="upload">
+              <div className="grid grid-cols-1 gap-8">
+                {/* FileUploader Component */}
+                <FileUploader 
+                  onFilesAdded={handleFilesAdded}
+                  onFilesCleared={handleFilesCleared}
+                  onStartProcessing={startProcessing}
+                />
+                
+                {/* Output Area */}
+                <div className="bg-surface border border-border-primary rounded-lg p-6">
+                  <div className="flex items-center mb-4">
+                    <FiDatabase className="w-5 h-5 mr-2 text-text-secondary" />
+                    <h2 className="text-xl font-medium">Output</h2>
+                  </div>
+                  
+                  <div className="border border-border-secondary rounded-lg p-8 flex flex-col min-h-[200px]">
+                    {!processedData ? (
+                      <div className="flex items-center justify-center h-full">
+                        <p className="text-text-secondary text-center">
+                          Processed data will be displayed here
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="w-full">
+                        {showJsonPreview && selectedJsonFile ? (
+                          <div>
+                            <div className="flex items-center justify-between mb-4">
+                              <h3 className="text-text-primary text-lg">JSON Preview: {selectedJsonFile.name}</h3>
+                              <button 
+                                onClick={() => setShowJsonPreview(false)}
+                                className="px-3 py-1 text-sm bg-surface border border-border-primary rounded hover:bg-background transition-all"
+                              >
+                                Back to Results
+                              </button>
+                            </div>
+                            
+                            <div className="bg-background p-4 rounded border border-border-secondary mb-4 overflow-auto max-h-80">
+                              <pre className="text-sm text-text-primary whitespace-pre-wrap">
+                                {JSON.stringify(selectedJsonFile.jsonData, null, 2)}
+                              </pre>
+                            </div>
+                            
+                            <div className="flex justify-end">
+                              <div className="flex gap-3">
+                                <button 
+                                  onClick={() => {
+                                    // Create a new window with the JSON data
+                                    const jsonContent = JSON.stringify(selectedJsonFile.jsonData, null, 2);
+                                    const blob = new Blob([jsonContent], { type: 'application/json' });
+                                    const url = URL.createObjectURL(blob);
+                                    window.open(url, '_blank');
+                                  }}
+                                  className="px-4 py-2 bg-primary text-background rounded hover:opacity-90 transition-all flex items-center"
+                                >
+                                  <FiExternalLink className="mr-2" /> Open in New Tab
+                                </button>
+                                
+                                <button 
+                                  onClick={() => {
+                                    // Download the individual JSON file
+                                    const jsonContent = JSON.stringify(selectedJsonFile.jsonData, null, 2);
+                                    const blob = new Blob([jsonContent], { type: 'application/json' });
+                                    const url = URL.createObjectURL(blob);
+                                    
+                                    // Create download link
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `${selectedJsonFile.name.split('.')[0]}.json`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                  }}
+                                  className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all flex items-center"
+                                >
+                                  <FiDownload className="mr-2" /> Download JSON
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <h3 className="text-text-primary text-lg mb-4 text-center">Standardization Results</h3>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                              <div className="p-4 border border-border-secondary rounded">
+                                <p className="text-text-secondary text-sm mb-1">Files Processed</p>
+                                <p className="text-text-primary text-xl">{processedData.fileCount}</p>
+                              </div>
+                              
+                              <div className="p-4 border border-border-secondary rounded">
+                                <p className="text-text-secondary text-sm mb-1">Total Size</p>
+                                <p className="text-text-primary text-xl">
+                                  {formatBytes(processedData.totalSize)}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <div className="p-4 border border-border-secondary rounded mb-6">
+                              <p className="text-text-secondary text-sm mb-2">File Types</p>
+                              <div className="flex flex-wrap gap-2">
+                                {processedData.types.map(type => (
+                                  <span 
+                                    key={type}
+                                    className="px-2 py-1 bg-background rounded text-xs text-text-primary"
+                                  >
+                                    {type.toUpperCase()}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            {processedData.standardizedFiles.length > 0 && (
+                              <div className="mb-6">
+                                <h4 className="text-md font-medium mb-3 flex items-center">
+                                  <FiCode className="mr-2" />
+                                  Standardized JSON Files
+                                </h4>
+                                <div className="space-y-2">
+                                  {processedData.standardizedFiles.map(file => (
+                                    <div 
+                                      key={file.id}
+                                      className="p-3 border border-border-secondary rounded flex items-center justify-between hover:bg-background cursor-pointer transition-all"
+                                      onClick={() => toggleJsonPreview(file.id)}
+                                    >
+                                      <div>
+                                        <p className="text-text-primary">{file.name}</p>
+                                        <p className="text-text-secondary text-xs">
+                                          Format: {file.format} • Size: {formatBytes(file.size)}
+                                        </p>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button className="text-xs px-2 py-1 flex items-center bg-surface border border-border-primary rounded">
+                                          <FiCode className="mr-1" /> View JSON
+                                        </button>
+                                        {file.format === 'excel' && (
+                                          <button className="text-xs px-2 py-1 flex items-center bg-surface border border-border-primary rounded text-primary">
+                                            <FiGrid className="mr-1" /> Excel
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            <div className="flex justify-end space-x-3">
+                              <button 
+                                onClick={() => {
+                                  // Export all standardized files as a single JSON file
+                                  const allData = {
+                                    exportDate: new Date().toISOString(),
+                                    files: processedData.standardizedFiles.map(file => file.jsonData)
+                                  };
+                                  const jsonContent = JSON.stringify(allData, null, 2);
+                                  const blob = new Blob([jsonContent], { type: 'application/json' });
+                                  const url = URL.createObjectURL(blob);
+                                  
+                                  // Create download link
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = 'standardized-files.json';
+                                  document.body.appendChild(a);
+                                  a.click();
+                                }}
+                                className="px-4 py-2 bg-primary text-background rounded hover:opacity-90 transition-all flex items-center"
+                              >
+                                <FiDownload className="mr-2" /> Export All as JSON
+                              </button>
+                              
+                              <button 
+                                onClick={() => {
+                                  // Export individual JSON files as a zip archive
+                                  alert('In a production environment, this would create a ZIP file with individual JSON files for each standardized document.');
+                                }}
+                                className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all flex items-center"
+                              >
+                                <FiCode className="mr-2" /> View All Files
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </TabPanel>
             
-            {/* Two-column layout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <BlockContainer className="min-h-[180px] flex items-center justify-center border-dashed">
-                <p className="text-text-secondary">Half width block</p>
-              </BlockContainer>
-              <BlockContainer className="min-h-[180px] flex items-center justify-center border-dashed">
-                <p className="text-text-secondary">Half width block</p>
-              </BlockContainer>
-            </div>
-            
-            {/* Three small blocks row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              <BlockContainer className="min-h-[140px] flex items-center justify-center border-dashed">
-                <p className="text-text-secondary">1/3 block</p>
-              </BlockContainer>
-              <BlockContainer className="min-h-[140px] flex items-center justify-center border-dashed">
-                <p className="text-text-secondary">1/3 block</p>
-              </BlockContainer>
-              <BlockContainer className="min-h-[140px] flex items-center justify-center border-dashed">
-                <p className="text-text-secondary">1/3 block</p>
-              </BlockContainer>
-            </div>
-          </div>
-          
-          {/* Grid controls - for development purposes */}
-          <div className="mt-12 text-right">
-            <button 
-              className="text-text-secondary text-sm hover:text-text-primary"
-              onClick={() => setShowGrid(!showGrid)}
-            >
-              {showGrid ? 'Hide Grid' : 'Show Grid'}
-            </button>
-          </div>
-        </div>
+            <TabPanel value="dashboard">
+              <div className="bg-surface border border-border-primary rounded-lg p-6">
+                <div className="flex items-center mb-4">
+                  <FiBarChart2 className="w-5 h-5 mr-2 text-text-secondary" />
+                  <h2 className="text-xl font-medium">Visualization Dashboard</h2>
+                </div>
+                <div className="border border-border-secondary rounded-lg p-8 flex flex-col items-center justify-center min-h-[400px]">
+                  <div className="text-center max-w-lg">
+                    <div className="text-6xl mb-6">*</div>
+                    <h3 className="text-xl mb-4 text-text-primary">Coming Soon</h3>
+                    <p className="text-text-secondary">
+                      The visualization dashboard is currently under development. This area will provide advanced analytics and visual representations of your standardized data.
+                    </p>
+                    <div className="mt-6 text-xs text-text-secondary flex flex-col items-center gap-2">
+                      <p>ASTER - AI-Powered Reinsurance Underwriting</p>
+                      <div className="flex gap-6 mt-2">
+                        <div className="flex flex-col items-center">
+                          <span className="text-status-success">Visualize</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-status-success">Analyze</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-status-success">Query</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-status-success">Decide</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
       </div>
-    </DndProvider>
+    </div>
   );
 };
 
