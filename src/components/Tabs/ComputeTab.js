@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
-import { FiCpu, FiDownload, FiPlay, FiLoader, FiCode, FiX } from 'react-icons/fi';
-import aiService from '../../services/aiService';
-import simpleStorage from '../../utils/simpleStorage';
+import React, { useState, useEffect, useRef } from 'react';
+import { FiCpu, FiDownload, FiPlay, FiLoader, FiCheck, FiBarChart2, FiAlertTriangle } from 'react-icons/fi';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { SortableItem } from '../SortableItem';
+import aiService from '../../services/aiService';
+import simpleStorage from '../../utils/simpleStorage';
+import SortableItem from '../SortableItem';
 
+// Main ComputeTab Component
 const ComputeTab = () => {
   const hardcodedPrompt = `Create a JSON array for an underwriter's report analyzing a Florida insurance company. Each object in the array must represent a critical macro-category and include four keys:
 title: A short, clear heading for the category.
@@ -22,18 +23,19 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
   const [files, setFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [generationQueue, setGenerationQueue] = useState([]);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState(null);
-  const [debugMode, setDebugMode] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState(hardcodedPrompt);
   const [blocks, setBlocks] = useState([]);
   const [activeBlockId, setActiveBlockId] = useState(null);
-  const [showContentModal, setShowContentModal] = useState(false);
-  const [modalContent, setModalContent] = useState({ title: '', content: '' });
+  const [initialGeneration, setInitialGeneration] = useState(false);
+  const [allComplete, setAllComplete] = useState(false);
+  const [filesLoaded, setFilesLoaded] = useState(false);
   
-  // Add AbortController refs
+  // Add AbortController ref
   const abortControllerRef = useRef(null);
-
+  const checkFilesIntervalRef = useRef(null);
+  
   // Configure DnD sensors with proper constraints
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -51,7 +53,9 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
     const loadFiles = async () => {
       try {
         const storedFiles = await simpleStorage.getItem('standardized_files');
-        setFiles(Array.isArray(storedFiles) ? storedFiles : []);
+        const filesArray = Array.isArray(storedFiles) ? storedFiles : [];
+        setFiles(filesArray);
+        setFilesLoaded(filesArray.length > 0);
       } catch (e) {
         console.error('Failed to load files:', e);
       }
@@ -59,13 +63,56 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
 
     loadFiles();
 
-    // Cleanup function to abort any pending requests when unmounting
+    // Set up interval to check for files every second
+    checkFilesIntervalRef.current = setInterval(async () => {
+      try {
+        const storedFiles = await simpleStorage.getItem('standardized_files');
+        const filesArray = Array.isArray(storedFiles) ? storedFiles : [];
+        
+        if (filesArray.length > 0 && !filesLoaded) {
+          setFiles(filesArray);
+          setFilesLoaded(true);
+        } else if (filesArray.length === 0 && filesLoaded) {
+          setFilesLoaded(false);
+        } else if (filesArray.length !== files.length) {
+          // Update if the number of files has changed
+          setFiles(filesArray);
+        }
+      } catch (e) {
+        console.error('Error checking for files:', e);
+      }
+    }, 1000);
+
+    // Cleanup function to abort any pending requests and clear interval when unmounting
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      if (checkFilesIntervalRef.current) {
+        clearInterval(checkFilesIntervalRef.current);
+      }
     };
-  }, []);
+  }, [filesLoaded, files.length]);
+
+  // Effect to handle auto-generation of content
+  useEffect(() => {
+    const processNextInQueue = async () => {
+      if (generationQueue.length === 0 || isGeneratingContent || !initialGeneration) return;
+      
+      const nextIndex = generationQueue[0];
+      
+      setGenerationQueue(queue => queue.slice(1));
+      await generateBlockContent(nextIndex);
+      
+      // Check if this was the last item
+      if (generationQueue.length === 0) {
+        setInitialGeneration(false);
+        setAllComplete(true);
+      }
+    };
+    
+    processNextInQueue();
+  }, [generationQueue, isGeneratingContent, initialGeneration]);
 
   const generateReport = async () => {
     if (isProcessing) return;
@@ -74,7 +121,7 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-
+    
     // Create a new AbortController
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
@@ -83,20 +130,18 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
     setProgress('Preparing files...');
     setError(null);
     setBlocks([]);
+    setAllComplete(false);
 
     try {
-      const promptToSend = debugMode && customPrompt.trim() ? customPrompt : hardcodedPrompt;
-      console.log(`Generating report with ${files.length} files`);
-      
       const response = await aiService.query(
-        promptToSend,
-        files, // Pass all standardized files
+        hardcodedPrompt,
+        files,
         '',
-        signal, // Pass the signal to allow request cancellation
+        signal,
         null,
         (message) => setProgress(message)
       );
-
+      
       // Make sure the request wasn't aborted
       if (signal.aborted) return;
 
@@ -121,8 +166,12 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
       
       setBlocks(blocksWithIds);
       
+      // Set up generation queue
+      setGenerationQueue(blocksWithIds.map((_, index) => index));
+      setInitialGeneration(true);
+      
     } catch (err) {
-      if (signal.aborted) {
+      if (abortControllerRef.current?.signal.aborted) {
         console.log('Request was aborted');
         return;
       }
@@ -130,7 +179,7 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
       console.error('Error during report generation:', err);
       setError(err.message);
     } finally {
-      if (!signal.aborted) {
+      if (!abortControllerRef.current?.signal.aborted) {
         setIsProcessing(false);
         setProgress('');
       }
@@ -175,7 +224,7 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-
+    
     // Create a new AbortController
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
@@ -194,8 +243,6 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
     });
     
     try {
-      setProgress('Generating content...');
-      
       // Find relevant files
       const relevantFileNames = block.relevant_files || [];
       const relevantFiles = files.filter(file => 
@@ -209,11 +256,11 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
         block.prompt,
         filesToUse,
         '',
-        signal, // Pass the signal
+        signal,
         null,
         (message) => setProgress(message)
       );
-
+      
       // Make sure the request wasn't aborted
       if (signal.aborted) return;
       
@@ -256,22 +303,13 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
     }
   };
 
-  const inspectBlock = (index) => {
-    const block = blocks[index];
-    if (block && block.content) {
-      setModalContent({
-        title: block.title,
-        content: block.content
-      });
-      setShowContentModal(true);
-    }
-  };
-
   const exportJson = () => {
     // Remove internal properties before export
     const exportData = blocks.map(({ id, isGenerating, isGenerated, ...rest }) => rest);
+    const jsonContent = JSON.stringify(exportData, null, 2);
     
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    // Create a downloadable file
+    const blob = new Blob([jsonContent], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     
     const a = document.createElement('a');
@@ -292,24 +330,13 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
         </div>
         
         <p className="mb-6 text-text-secondary">
-          Generate a structured underwriting report based on your uploaded files. Drag blocks to reorder sections.
+          Generate a structured underwriting report based on your uploaded files. Sections will be automatically analyzed.
         </p>
-        
-        {debugMode && (
-          <div className="mb-6">
-            <textarea
-              className="w-full h-32 p-2 mb-2 bg-background border border-border-secondary rounded text-text-primary"
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              disabled={isProcessing}
-            />
-          </div>
-        )}
         
         <div className="flex flex-wrap gap-3">
           <button
             onClick={generateReport}
-            disabled={isProcessing || files.length === 0}
+            disabled={isProcessing || !filesLoaded}
             className="px-4 py-2 bg-primary text-background rounded hover:opacity-90 transition-all disabled:opacity-50 flex items-center"
           >
             {isProcessing ? (
@@ -325,14 +352,6 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
             )}
           </button>
           
-          <button
-            onClick={() => setDebugMode(!debugMode)}
-            className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all flex items-center"
-          >
-            <FiCode className="mr-2" /> 
-            {debugMode ? 'Disable Debug' : 'Enable Debug'}
-          </button>
-          
           {blocks.length > 0 && (
             <button
               onClick={exportJson}
@@ -346,22 +365,55 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
         
         {progress && (
           <div className="mt-4">
-            <p className="text-text-secondary">{progress}</p>
+            <p className="text-text-secondary flex items-center">
+              <FiLoader className="animate-spin mr-2" />
+              {progress}
+            </p>
           </div>
         )}
         
         {error && (
-          <div className="mt-4 p-4 bg-status-error/10 border border-status-error/20 text-status-error rounded">
-            <strong>Error:</strong> {error}
+          <div className="mt-4 p-4 bg-status-error/10 border border-status-error/20 text-status-error rounded flex items-start">
+            <FiAlertTriangle className="mr-2 mt-0.5 flex-shrink-0" />
+            <span>{error}</span>
           </div>
         )}
         
-        {files.length === 0 && (
-          <div className="mt-4 p-4 bg-status-warning/10 border border-status-warning/20 text-status-warning rounded">
-            Please upload and standardize files in the Files tab before generating a report.
+        {!filesLoaded && (
+          <div className="mt-4 p-4 bg-status-warning/10 border border-status-warning/20 text-status-warning rounded flex items-center">
+            <FiAlertTriangle className="mr-2 flex-shrink-0" />
+            <span>Please upload and standardize files in the Files tab before generating a report. Checking every second for files...</span>
+          </div>
+        )}
+        
+        {allComplete && blocks.length > 0 && (
+          <div className="mt-4 p-4 bg-status-success/10 border border-status-success/20 text-status-success rounded flex items-center">
+            <FiCheck className="mr-2" />
+            <span>All sections analyzed successfully. You can now export the report.</span>
           </div>
         )}
       </div>
+      
+      {/* Progress card for initial auto-generation */}
+      {initialGeneration && generationQueue.length > 0 && (
+        <div className="bg-surface border border-border-primary rounded-lg p-6">
+          <div className="flex items-center mb-4">
+            <FiBarChart2 className="w-5 h-5 mr-2 text-text-secondary" />
+            <h2 className="text-lg font-medium">Automatic Analysis Progress</h2>
+          </div>
+          
+          <div className="w-full bg-background rounded-full h-2 mb-3">
+            <div 
+              className="bg-primary h-2 rounded-full transition-all duration-300" 
+              style={{ width: `${Math.round(((blocks.length - generationQueue.length) / blocks.length) * 100)}%` }}
+            ></div>
+          </div>
+          
+          <p className="text-text-secondary">
+            {blocks.length - generationQueue.length} of {blocks.length} sections analyzed
+          </p>
+        </div>
+      )}
       
       {/* Block listing with drag and drop */}
       {blocks.length > 0 && (
@@ -381,42 +433,12 @@ Format the JSON array cleanly, with no markdown or extra symbols.`;
                   onDelete={() => deleteBlock(index)}
                   onEdit={editBlock}
                   onGenerate={() => generateBlockContent(index)}
-                  onInspect={() => inspectBlock(index)}
+                  onInspect={null}
                 />
               ))}
             </div>
           </SortableContext>
         </DndContext>
-      )}
-
-      {/* Full Content Modal */}
-      {showContentModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-background/70 p-4">
-          <div className="bg-surface border border-border-primary rounded-lg shadow-lg w-full max-w-3xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-border-secondary">
-              <h3 className="text-xl font-medium text-text-primary">{modalContent.title}</h3>
-              <button 
-                onClick={() => setShowContentModal(false)}
-                className="p-2 rounded-full text-text-secondary hover:text-status-error hover:bg-background transition-all"
-              >
-                <FiX />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <pre className="whitespace-pre-wrap text-text-primary font-sans">
-                {modalContent.content}
-              </pre>
-            </div>
-            <div className="p-4 border-t border-border-secondary flex justify-end">
-              <button
-                onClick={() => setShowContentModal(false)}
-                className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

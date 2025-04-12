@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { FiX, FiEdit2, FiEye, FiMove, FiRefreshCw, FiLoader, FiMaximize2, FiMinimize2 } from 'react-icons/fi';
+import { FiX, FiEdit, FiMove, FiRefreshCw, FiLoader, FiCheck, FiMaximize2, FiMinimize2, FiPlay } from 'react-icons/fi';
+import RegenerateModal from './RegenerateModal';
 
 const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspect }) => {
   const { 
@@ -14,10 +15,14 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
   } = useSortable({ id });
   
   const [editingTitle, setEditingTitle] = useState(false);
-  const [editingPrompt, setEditingPrompt] = useState(false);
+  const [editingContent, setEditingContent] = useState(false);
   const [title, setTitle] = useState(block.title);
-  const [prompt, setPrompt] = useState(block.prompt);
+  const [content, setContent] = useState(block.content || '');
+  const [promptInput, setPromptInput] = useState(block.prompt || '');
   const [showFullContent, setShowFullContent] = useState(false);
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [alternatives, setAlternatives] = useState([]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -26,10 +31,10 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
     zIndex: isDragging ? 10 : 1,
   };
 
-  const saveEdit = (field) => {
-    onEdit(index, field, field === 'title' ? title : prompt);
+  const saveEdit = (field, value) => {
+    onEdit(index, field, value || (field === 'title' ? title : content));
     if (field === 'title') setEditingTitle(false);
-    if (field === 'prompt') setEditingPrompt(false);
+    if (field === 'content') setEditingContent(false);
   };
 
   // Determine status colors for the left border
@@ -47,6 +52,56 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
     setShowFullContent(!showFullContent);
     // Also call the parent's inspect handler if it exists
     if (onInspect) onInspect(index);
+  };
+  
+  const handlePromptEdit = (e) => {
+    setPromptInput(e.target.value);
+  };
+  
+  const savePromptEdit = () => {
+    onEdit(index, 'prompt', promptInput);
+  };
+  
+  const handleRegenerateContent = async (customPrompt, callback) => {
+    setIsRegenerating(true);
+    
+    try {
+      // Generate 3 alternative versions
+      const prompts = [
+        `${customPrompt} - Version 1: Focus on key findings and actionable recommendations.`,
+        `${customPrompt} - Version 2: Provide detailed analysis with supporting evidence and examples.`,
+        `${customPrompt} - Version 3: Present a balanced view with pros and cons, risks and opportunities.`
+      ];
+      
+      const results = await Promise.all(
+        prompts.map(prompt => 
+          // We're using a dummy response for the demo - in real implementation, use actual API
+          simulateContentGeneration(prompt)
+        )
+      );
+      
+      setAlternatives(results);
+      if (callback) callback(results);
+    } catch (error) {
+      console.error('Error generating alternatives:', error);
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+  
+  // This is just for demonstration - replace with actual AI generation
+  const simulateContentGeneration = async (prompt) => {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Just demo content - replace with actual AI service in real implementation
+    if (prompt.includes('Version 1')) {
+      return `Key Findings:\n• Risk concentration in coastal areas exceeds industry benchmarks by 42%\n• Premiums inadequately reflect hurricane probability in Zone 3\n• Historical loss ratio trending upward (5.2% annually)\n\nRecommendations:\n1. Rebalance portfolio with 15% shift to inland properties\n2. Implement premium adjustments in high-risk zones\n3. Review reinsurance treaty terms before renewal`;
+    } else if (prompt.includes('Version 2')) {
+      return `The analysis reveals significant geographic concentration risk in the property portfolio. Specifically, 64% of insured properties are located in FEMA-designated high-risk flood zones, with 27% in areas that experienced hurricane-related losses in the past decade.\n\nHistorical performance data indicates progressive deterioration in loss ratios within coastal regions, rising from 62.1% in 2020 to 76.5% in current period. This trend correlates strongly (0.87 correlation coefficient) with increased severe weather events.\n\nPricing adequacy assessment demonstrates a systematic underpricing of hurricane risk. Current rate levels capture approximately 78% of expected losses based on updated catastrophe models.`;
+    } else {
+      return `Risk Assessment:\n✓ Portfolio diversification has improved in northern regions\n✗ Coastal exposure remains significantly above target thresholds\n✓ New underwriting guidelines show early positive results\n✗ Premium adequacy gap of 22% in hurricane-prone zones\n\nOpportunities:\n• Targeted non-renewals could improve risk profile by 18%\n• Precision pricing model could increase premium adequacy\n• Enhanced mitigation requirements show 24% loss reduction\n\nConclusions:\nWhile improvements are visible in certain segments, the overall geographic concentration presents continuing challenges that require immediate attention.`;
+    }
   };
 
   return (
@@ -81,14 +136,15 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
               <div className="flex items-center gap-2">
                 <h3 className="font-medium text-lg">{block.title}</h3>
                 {block.isGenerated && (
-                  <span className="px-2 py-0.5 bg-status-success/10 text-status-success text-xs rounded-full">
-                    Generated
+                  <span className="px-2 py-0.5 bg-status-success/10 text-status-success text-xs rounded-full flex items-center">
+                    <FiCheck className="mr-1" />
+                    Complete
                   </span>
                 )}
                 {block.isGenerating && (
                   <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full flex items-center">
                     <FiLoader className="animate-spin mr-1" />
-                    Generating
+                    Analyzing
                   </span>
                 )}
               </div>
@@ -96,23 +152,26 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
           </div>
           
           <div className="flex items-center gap-2">
-            <button 
-              onClick={() => onGenerate(index)}
-              disabled={block.isGenerating}
-              className={`p-1 rounded ${block.isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-background text-text-secondary hover:text-primary'}`}
-              title="Generate content"
-            >
-              <FiRefreshCw className={block.isGenerating ? 'animate-spin' : ''} />
-            </button>
-            
-            {block.content && (
-              <button 
-                onClick={toggleFullContent}
-                className="p-1 rounded text-text-secondary hover:text-primary hover:bg-background"
-                title={showFullContent ? "Collapse content" : "Expand content"}
-              >
-                {showFullContent ? <FiMinimize2 /> : <FiMaximize2 />}
-              </button>
+            {!block.isGenerating && (
+              <>
+                {!block.isGenerated ? (
+                  <button 
+                    onClick={() => onGenerate(index)}
+                    className="p-1 rounded hover:bg-background text-text-secondary hover:text-primary"
+                    title="Generate content"
+                  >
+                    <FiPlay />
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => setShowRegenerateModal(true)}
+                    className="p-1 rounded hover:bg-background text-text-secondary hover:text-primary"
+                    title="Regenerate content"
+                  >
+                    <FiRefreshCw />
+                  </button>
+                )}
+              </>
             )}
             
             <button 
@@ -120,7 +179,7 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
               className="p-1 rounded text-text-secondary hover:text-primary hover:bg-background"
               title="Edit title"
             >
-              <FiEdit2 />
+              <FiEdit />
             </button>
             
             <button 
@@ -134,25 +193,14 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
         </div>
         
         <div>
-          {editingPrompt ? (
-            <textarea
-              className="w-full bg-background border border-border-secondary text-text-primary rounded p-2 text-sm"
-              value={prompt}
-              rows="3"
-              onChange={(e) => setPrompt(e.target.value)}
-              onBlur={() => saveEdit('prompt')}
-              onKeyDown={(e) => e.ctrlKey && e.key === 'Enter' && saveEdit('prompt')}
-              autoFocus
-            />
-          ) : (
-            <p 
-              className="text-text-secondary text-sm whitespace-pre-wrap mb-2 cursor-pointer hover:text-text-primary"
-              onClick={() => setEditingPrompt(true)}
-              title="Click to edit prompt"
-            >
-              {block.prompt}
-            </p>
-          )}
+          <textarea
+            className="w-full bg-background border border-border-secondary text-text-primary rounded p-2 text-sm"
+            value={promptInput}
+            rows="3"
+            onChange={handlePromptEdit}
+            onBlur={savePromptEdit}
+            placeholder="Enter prompt for this section..."
+          />
         </div>
         
         {block.relevant_files && block.relevant_files.length > 0 && (
@@ -165,8 +213,15 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
         {block.content && !block.isGenerating && (
           <div className={`mt-3 bg-surface rounded-md border border-border-secondary transition-all duration-300 ${showFullContent ? 'p-4' : 'p-2'}`}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-text-secondary">
+              <span className="text-xs font-medium text-text-secondary flex items-center gap-2">
                 {showFullContent ? "Full Content" : "Content Preview"}
+                <button 
+                  onClick={() => setEditingContent(true)}
+                  className="p-1 rounded text-text-secondary hover:text-primary"
+                  title="Edit content"
+                >
+                  <FiEdit size={12} />
+                </button>
               </span>
               <button 
                 onClick={toggleFullContent}
@@ -175,11 +230,31 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
                 {showFullContent ? "Collapse" : "View Full"}
               </button>
             </div>
-            <div className={`overflow-y-auto transition-all duration-300 ${showFullContent ? 'max-h-96' : 'max-h-12'}`}>
-              <pre className={`text-text-primary whitespace-pre-wrap text-sm font-sans ${!showFullContent && 'line-clamp-2'}`}>
-                {block.content}
-              </pre>
-            </div>
+            
+            {editingContent ? (
+              <div className="w-full">
+                <textarea
+                  className="w-full bg-background border border-border-secondary text-text-primary rounded p-2 text-sm min-h-32"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  rows={showFullContent ? 10 : 4}
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => saveEdit('content')}
+                    className="px-3 py-1 text-xs bg-primary text-background rounded"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className={`overflow-y-auto transition-all duration-300 ${showFullContent ? 'max-h-96' : 'max-h-12'}`}>
+                <pre className={`text-text-primary whitespace-pre-wrap text-sm font-sans ${!showFullContent && 'line-clamp-2'}`}>
+                  {block.content}
+                </pre>
+              </div>
+            )}
           </div>
         )}
         
@@ -188,7 +263,7 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
           <div className="mt-3 p-4 bg-surface rounded-md border border-border-secondary">
             <div className="flex flex-col items-center justify-center py-4">
               <FiLoader className="animate-spin text-primary mb-2" size={20} />
-              <p className="text-text-secondary text-sm">Generating content...</p>
+              <p className="text-text-secondary text-sm">Analyzing data and generating insights...</p>
             </div>
           </div>
         )}
@@ -200,13 +275,29 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
               onClick={() => onGenerate(index)}
               className="px-3 py-1 text-sm bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors"
             >
-              Generate Content
+              Generate Analysis
             </button>
           </div>
         )}
       </div>
+      
+      {/* Regenerate Modal */}
+      {showRegenerateModal && (
+        <RegenerateModal
+          isOpen={showRegenerateModal}
+          onClose={() => setShowRegenerateModal(false)}
+          blockTitle={block.title}
+          initialPrompt={block.prompt}
+          onRegenerate={handleRegenerateContent}
+          onSelect={(selectedContent) => {
+            onEdit(index, 'content', selectedContent);
+            setContent(selectedContent);
+          }}
+          isGenerating={isRegenerating}
+        />
+      )}
     </div>
   );
 };
 
-export { SortableItem };
+export default SortableItem;
