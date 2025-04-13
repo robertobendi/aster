@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FiCode, FiDownload, FiExternalLink, FiGrid, FiFileText, FiFile, FiX } from 'react-icons/fi';
 import FileUploader from '../FileUploader';
 
-const FilesTab = () => {
+const FilesTab = ({ onStandardizedFilesChange }) => {
   // State for processing and output
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [processingStatus, setProcessingStatus] = useState('idle'); // 'idle', 'processing', 'complete'
@@ -25,11 +25,21 @@ const FilesTab = () => {
     setSelectedJsonFile(null);
   };
 
-  // Receive standardized files without processing
+  /**
+   * Called when file(s) finish standardizing in FileUploader
+   * This is where we can tell our parent "we have standardized files!"
+   */
   const startProcessing = (standardizedFiles) => {
     setProcessingStatus('complete');
-    // We don't need to transform data into processedData anymore
-    // Just use the standardized files directly
+
+    // 1) Keep track in our local state if desired
+    // (We already have "uploadedFiles" updated by FileUploader.)
+
+    // 2) ALSO inform parent (or global) that standardized files are available
+    //    if the parent provided a callback prop:
+    if (onStandardizedFilesChange && standardizedFiles.length > 0) {
+      onStandardizedFilesChange(standardizedFiles);
+    }
   };
 
   // Toggle JSON preview for a specific file
@@ -46,13 +56,10 @@ const FilesTab = () => {
   // Format bytes to human readable format
   const formatBytes = (bytes, decimals = 1) => {
     if (bytes === 0) return '0 Bytes';
-    
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
 
@@ -72,7 +79,7 @@ const FilesTab = () => {
     }
   };
 
-  // Filter standardized files
+  // Filter standardized files for display
   const standardizedFiles = uploadedFiles.filter(file => file.standardized);
 
   return (
@@ -81,14 +88,18 @@ const FilesTab = () => {
       <FileUploader 
         onFilesAdded={handleFilesAdded}
         onFilesCleared={handleFilesCleared}
+        // This is triggered when standardization completes in FileUploader
         onStartProcessing={startProcessing}
       />
       
       {/* Standardized Files Section - Replaces the output area */}
       {showJsonPreview && selectedJsonFile ? (
+        // JSON PREVIEW MODE
         <div className="bg-surface border border-border-primary rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-text-primary text-lg">JSON Preview: {selectedJsonFile.name}</h3>
+            <h3 className="text-text-primary text-lg">
+              JSON Preview: {selectedJsonFile.name}
+            </h3>
             <button 
               onClick={() => setShowJsonPreview(false)}
               className="px-3 py-1 text-sm bg-surface border border-border-primary rounded hover:bg-background transition-all"
@@ -103,41 +114,40 @@ const FilesTab = () => {
             </pre>
           </div>
           
-          <div className="flex justify-end">
-            <div className="flex gap-3">
-              <button 
-                onClick={() => {
-                  const jsonContent = JSON.stringify(selectedJsonFile.jsonData, null, 2);
-                  const blob = new Blob([jsonContent], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  window.open(url, '_blank');
-                }}
-                className="px-4 py-2 bg-primary text-background rounded hover:opacity-90 transition-all flex items-center"
-              >
-                <FiExternalLink className="mr-2" /> Open in New Tab
-              </button>
-              
-              <button 
-                onClick={() => {
-                  const jsonContent = JSON.stringify(selectedJsonFile.jsonData, null, 2);
-                  const blob = new Blob([jsonContent], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${selectedJsonFile.name.split('.')[0]}.json`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                }}
-                className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all flex items-center"
-              >
-                <FiDownload className="mr-2" /> Download JSON
-              </button>
-            </div>
+          <div className="flex justify-end gap-3">
+            <button 
+              onClick={() => {
+                const jsonContent = JSON.stringify(selectedJsonFile.jsonData, null, 2);
+                const blob = new Blob([jsonContent], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+              }}
+              className="px-4 py-2 bg-primary text-background rounded hover:opacity-90 transition-all flex items-center"
+            >
+              <FiExternalLink className="mr-2" /> Open in New Tab
+            </button>
+            
+            <button 
+              onClick={() => {
+                const jsonContent = JSON.stringify(selectedJsonFile.jsonData, null, 2);
+                const blob = new Blob([jsonContent], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${selectedJsonFile.name.split('.')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }}
+              className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all flex items-center"
+            >
+              <FiDownload className="mr-2" /> Download JSON
+            </button>
           </div>
         </div>
       ) : standardizedFiles.length > 0 ? (
+        // FILE GALLERY VIEW
         <div className="bg-surface border border-border-primary rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-medium">Standardized Files</h3>
@@ -157,6 +167,7 @@ const FilesTab = () => {
                   a.download = 'standardized-files.json';
                   document.body.appendChild(a);
                   a.click();
+                  document.body.removeChild(a);
                 }
               }}
               className="px-3 py-1 text-sm bg-primary text-background rounded hover:opacity-90 transition-all flex items-center"
@@ -176,7 +187,9 @@ const FilesTab = () => {
                     {getFileIcon(file.extension)}
                   </span>
                   <div className="truncate flex-1">
-                    <p className="text-text-primary font-medium truncate">{file.name}</p>
+                    <p className="text-text-primary font-medium truncate">
+                      {file.name}
+                    </p>
                   </div>
                 </div>
                 
@@ -187,6 +200,7 @@ const FilesTab = () => {
                   </div>
                   
                   <div className="flex gap-2">
+                    {/* View JSON button */}
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
@@ -197,6 +211,7 @@ const FilesTab = () => {
                       <FiCode className="mr-1" /> View JSON
                     </button>
                     
+                    {/* View data for Excel-based files */}
                     {file.extension === 'xlsx' && file.jsonData?.sheets && (
                       <button 
                         onClick={(e) => {
@@ -220,18 +235,26 @@ const FilesTab = () => {
                               <body>
                                 <h2>${file.name} - Sheet: ${firstSheetName || 'Unknown'}</h2>
                                 <table>
-                                  ${firstSheetData.length > 0 ? `
-                                    <tr>
-                                      ${Object.keys(firstSheetData[0]).map(header => `<th>${header}</th>`).join('')}
-                                    </tr>
-                                    ${firstSheetData.slice(0, 100).map(row => `
-                                      <tr>
-                                        ${Object.values(row).map(cell => `<td>${cell !== null ? cell : ''}</td>`).join('')}
-                                      </tr>
-                                    `).join('')}
-                                  ` : '<tr><td>No data available</td></tr>'}
+                                  ${
+                                    firstSheetData.length > 0
+                                      ? `
+                                        <tr>
+                                          ${Object.keys(firstSheetData[0]).map(header => `<th>${header}</th>`).join('')}
+                                        </tr>
+                                        ${firstSheetData.slice(0, 100).map(row => `
+                                          <tr>
+                                            ${Object.values(row).map(cell => `<td>${cell ?? ''}</td>`).join('')}
+                                          </tr>
+                                        `).join('')}
+                                      `
+                                      : '<tr><td>No data available</td></tr>'
+                                  }
                                 </table>
-                                ${firstSheetData.length > 100 ? '<p>Showing first 100 rows only</p>' : ''}
+                                ${
+                                  firstSheetData.length > 100
+                                    ? '<p>Showing first 100 rows only</p>'
+                                    : ''
+                                }
                               </body>
                             </html>
                           `;
@@ -246,10 +269,10 @@ const FilesTab = () => {
                       </button>
                     )}
                     
+                    {/* Download JSON button */}
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Download JSON
                         const jsonContent = JSON.stringify(file.jsonData, null, 2);
                         const blob = new Blob([jsonContent], { type: 'application/json' });
                         const url = URL.createObjectURL(blob);
@@ -321,11 +344,15 @@ const FilesTab = () => {
                               </tr>
                               <tr>
                                 <th>File Types</th>
-                                <td>${Array.from(new Set(standardizedFiles.map(file => file.extension.toUpperCase()))).join(', ')}</td>
+                                <td>${Array.from(
+                                  new Set(standardizedFiles.map(f => f.extension.toUpperCase()))
+                                ).join(', ')}</td>
                               </tr>
                               <tr>
                                 <th>Total Size</th>
-                                <td>${formatBytes(standardizedFiles.reduce((sum, file) => sum + file.size, 0))}</td>
+                                <td>${formatBytes(
+                                  standardizedFiles.reduce((sum, f) => sum + f.size, 0)
+                                )}</td>
                               </tr>
                             </table>
                           </div>
@@ -339,14 +366,18 @@ const FilesTab = () => {
                                 <th>Format</th>
                                 <th>Size</th>
                               </tr>
-                              ${standardizedFiles.map(file => `
-                                <tr>
-                                  <td>${file.name}</td>
-                                  <td>${file.extension.toUpperCase()}</td>
-                                  <td>${file.jsonData?.format || 'unknown'}</td>
-                                  <td>${formatBytes(file.size)}</td>
-                                </tr>
-                              `).join('')}
+                              ${standardizedFiles
+                                .map(
+                                  f => `
+                                    <tr>
+                                      <td>${f.name}</td>
+                                      <td>${f.extension.toUpperCase()}</td>
+                                      <td>${f.jsonData?.format || 'unknown'}</td>
+                                      <td>${formatBytes(f.size)}</td>
+                                    </tr>
+                                  `
+                                )
+                                .join('')}
                             </table>
                           </div>
                         </body>

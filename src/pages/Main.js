@@ -1,4 +1,3 @@
-// src/pages/Main.jsx
 import React, { useState } from "react";
 import {
   FiUpload,
@@ -8,7 +7,6 @@ import {
   FiEye,
 } from "react-icons/fi";
 
-// Your tab system
 import {
   Tabs,
   TabList,
@@ -17,26 +15,31 @@ import {
   TabPanels,
 } from "../components/Tabs/Tabs.js";
 
-// Existing tab components
+// Tab components
 import FilesTab from "../components/Tabs/FilesTab";
 import ComputeTab from "../components/Tabs/ComputeTab";
 import SettingsTab from "../components/Tabs/SettingsTab";
 import ViewTab from "../components/Tabs/ViewTab";
 
 const Main = () => {
-  // 2) Store blocks here, so they're shared
+  // Holds AI-generated "blocks" for the Compute & View tabs
   const [blocks, setBlocks] = useState([]);
+
+  // 1) Holds the standardized files for global access
+  const [standardizedFiles, setStandardizedFiles] = useState([]);
 
   return (
     <div className="min-h-screen bg-background text-text-primary">
       <div className="max-w-container mx-auto px-container-default">
+
         <Tabs defaultTab="files">
           <TabList>
             <TabButton
               value="files"
               label={
                 <div className="flex items-center">
-                  <FiUpload className="mr-2" /> Files
+                  <FiUpload className="mr-2" />
+                  Files
                 </div>
               }
             />
@@ -44,7 +47,8 @@ const Main = () => {
               value="compute"
               label={
                 <div className="flex items-center">
-                  <FiCpu className="mr-2" /> Compute
+                  <FiCpu className="mr-2" />
+                  Compute
                 </div>
               }
             />
@@ -52,16 +56,17 @@ const Main = () => {
               value="view"
               label={
                 <div className="flex items-center">
-                  <FiEye className="mr-2" /> View
+                  <FiEye className="mr-2" />
+                  View
                 </div>
               }
             />
-
             <TabButton
               value="settings"
               label={
                 <div className="flex items-center">
-                  <FiSettings className="mr-2" /> Settings
+                  <FiSettings className="mr-2" />
+                  Settings
                 </div>
               }
             />
@@ -69,12 +74,18 @@ const Main = () => {
 
           <TabPanels>
             <TabPanel value="files">
-              <FilesTab />
+              {/* 2) Pass down setStandardizedFiles so FileUploader can call it */}
+              <FilesTab onStandardizedFilesChange={setStandardizedFiles} />
             </TabPanel>
 
-            {/* 3) Pass the parent's blocks/setBlocks to ComputeTab */}
             <TabPanel value="compute">
-              <ComputeTab blocks={blocks} setBlocks={setBlocks} />
+              {/* 3) Pass blocks, setBlocks, AND standardizedFiles if you want 
+                  ComputeTab to use them. */}
+              <ComputeTab
+                blocks={blocks}
+                setBlocks={setBlocks}
+                files={standardizedFiles} 
+              />
             </TabPanel>
 
             <TabPanel value="view">
@@ -86,6 +97,7 @@ const Main = () => {
             </TabPanel>
           </TabPanels>
         </Tabs>
+
       </div>
     </div>
   );
