@@ -312,7 +312,7 @@ Do not add any commentary outside the JSON array.
 
       // AI request
       const content = await aiService.query(
-        block.prompt,
+        block.prompt + "make it 1300 characters long at most",
         filesToUse,
         "",
         signal,
