@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { 
-  FiX, FiEdit, FiMove, FiRefreshCw, 
-  FiLoader, FiCheck, FiPlay 
+import {
+  FiX, FiEdit, FiMove, FiRefreshCw,
+  FiLoader, FiCheck, FiPlay
 } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';   // for GitHub-flavored markdown
+import remarkGfm from 'remark-gfm';
 import RegenerateModal from './RegenerateModal';
-
-// Import your AI service
 import aiService from '../services/aiService';
 
 const SortableItem = ({
@@ -19,38 +17,37 @@ const SortableItem = ({
   onDelete,
   onEdit,
   onGenerate,
-  onInspect,
   isSelected,
   onSelect,
-
-  // Accept the same "files" the parent uses (standardized files).
   files
 }) => {
-  const { 
-    attributes, 
-    listeners, 
-    setNodeRef, 
-    transform, 
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
     transition,
     isDragging
   } = useSortable({ id });
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(block.title);
   const [content, setContent] = useState(block.content || '');
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  // Store alternative generation results from the regenerate modal
+  // We store the 3 alternative strings if the user regenerates content
   const [alternatives, setAlternatives] = useState([]);
 
-  // Update local content whenever block.content changes externally
+  // Keep local content in sync with block.content
   useEffect(() => {
     setContent(block.content || '');
   }, [block.content]);
 
+  // If this item is selected, we show the "full content" instead of truncated
   const showFullContent = isSelected;
 
+  // Apply drag transform & styling
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -58,12 +55,14 @@ const SortableItem = ({
     zIndex: isDragging ? 10 : 1,
   };
 
+  // Save changes from editing the block’s title/content
   const saveEdit = () => {
     onEdit(index, 'title', title);
     onEdit(index, 'content', content);
     setIsEditing(false);
   };
 
+  // Return a CSS class based on block’s generation status
   const getStatusClasses = () => {
     if (block.isGenerating) {
       return "border-l-4 border-l-primary before:absolute before:inset-0 before:bg-gradient-to-r before:from-primary/10 before:to-transparent before:animate-pulse before:z-0";
@@ -74,8 +73,8 @@ const SortableItem = ({
     }
   };
 
+  // Only toggle "selected" if the user didn't click on a button/input
   const handleItemClick = (e) => {
-    // Prevent toggling if clicked on a button or input
     if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) {
       return;
     }
@@ -83,40 +82,37 @@ const SortableItem = ({
   };
 
   /**
-   * Called when user clicks "Regenerate" in the modal
-   * We now generate multiple versions sequentially instead of in parallel.
+   * Called from the RegenerateModal. We generate 3 versions of the updated prompt,
+   * each instructing the AI to only rely on file IDs if it references any files.
    */
   const handleRegenerateContent = async (customPrompt, callback) => {
     setIsRegenerating(true);
+
     try {
-      // 1) Determine which files to pass to the AI service
-      const relevantFileNames = block.relevant_files || [];
-      const relevantFiles = files.filter((f) => relevantFileNames.includes(f.name));
+      // Gather relevant files by ID; if none are listed, fallback to all
+      const relevantFileIds = block.relevant_files || [];
+      const relevantFiles = files.filter(f => relevantFileIds.includes(f.id));
       const filesToUse = relevantFiles.length > 0 ? relevantFiles : files;
 
-      // We'll show the user 3 different “versions”
+      // We'll produce 3 different "versions"
       const prompts = [
-        `${customPrompt} - Version 1: Focus on key findings and actionable recommendations.`,
-        `${customPrompt} - Version 2: Provide detailed analysis with supporting evidence and examples. Add markdown graphs if relevant.`,
-        `${customPrompt} - Version 3: Present a balanced view with pros and cons, risks and opportunities.`
+        `${customPrompt}\n\nIMPORTANT: Only use known file IDs if referencing files; do not add ellipses.\n\nVersion 1: Focus on key findings and actionable recommendations.`,
+        `${customPrompt}\n\nIMPORTANT: Only use known file IDs if referencing files; do not add ellipses.\n\nVersion 2: Provide detailed analysis with examples. Add markdown graphs if relevant.`,
+        `${customPrompt}\n\nIMPORTANT: Only use known file IDs if referencing files; do not add ellipses.\n\nVersion 3: Present a balanced view with pros and cons, risks and opportunities.`
       ];
 
-      // Instead of Promise.all, do each query one at a time
       const results = [];
-      for (let i = 0; i < prompts.length; i++) {
-        const prompt = prompts[i];
-        // Start generating
-        const result = await aiService.query(prompt, filesToUse);
-        results.push(result);
+      for (const prompt of prompts) {
+        const response = await aiService.query(prompt, filesToUse);
+        results.push(response);
       }
 
-      // Save these alternatives in local state
+      // Store these 3 alternatives in local state
       setAlternatives(results);
 
-      // If the caller (RegenerateModal) wants them, provide them
-      if (callback) {
-        callback(results);
-      }
+      // Also let the modal know we got them
+      if (callback) callback(results);
+
     } catch (error) {
       console.error('Error generating alternatives:', error);
     } finally {
@@ -125,18 +121,19 @@ const SortableItem = ({
   };
 
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
+    <div
+      ref={setNodeRef}
+      style={style}
       className={`relative bg-background border border-border-primary rounded-lg p-4 shadow-sm hover:shadow-md transition-all overflow-hidden cursor-pointer ${getStatusClasses()}`}
       onClick={handleItemClick}
     >
       <div className="relative z-1">
         
-        {/* Top bar */}
+        {/* Top bar: Title, drag handle, and status tags */}
         <div className="flex items-center justify-between mb-3">
-          {/* Left side */}
+          {/* Left side: Drag handle + Title (or input if editing) */}
           <div className="flex items-center gap-2">
+            {/* Drag handle */}
             <div
               {...attributes}
               {...listeners}
@@ -145,8 +142,8 @@ const SortableItem = ({
             >
               <FiMove />
             </div>
-            
-            {/* Title display or input if editing */}
+
+            {/* Title field */}
             {isEditing ? (
               <input
                 type="text"
@@ -158,7 +155,6 @@ const SortableItem = ({
             ) : (
               <div className="flex items-center gap-2">
                 <h3 className="font-medium text-lg">{block.title}</h3>
-                {/* Status tags */}
                 {block.isGenerated && (
                   <span className="px-2 py-0.5 bg-status-success/10 text-status-success text-xs rounded-full flex items-center">
                     <FiCheck className="mr-1" />
@@ -175,12 +171,13 @@ const SortableItem = ({
             )}
           </div>
           
-          {/* Right side */}
+          {/* Right side: Generate / Regenerate / Edit / Delete buttons */}
           <div className="flex items-center gap-2">
             {!block.isGenerating && (
               <>
                 {!block.isGenerated ? (
-                  <button 
+                  /* If not generated yet, show the "Generate" button */
+                  <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onGenerate(index);
@@ -191,7 +188,8 @@ const SortableItem = ({
                     <FiPlay />
                   </button>
                 ) : (
-                  <button 
+                  /* Otherwise show "Regenerate" */
+                  <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowRegenerateModal(true);
@@ -204,12 +202,12 @@ const SortableItem = ({
                 )}
               </>
             )}
-            
+
             {block.content && !block.isGenerating && (
-              <button 
+              <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsEditing((prev) => !prev);
+                  setIsEditing(prev => !prev);
                 }}
                 className="p-1 rounded text-text-secondary hover:text-primary hover:bg-background"
                 title="Edit title & content"
@@ -217,8 +215,8 @@ const SortableItem = ({
                 <FiEdit />
               </button>
             )}
-            
-            <button 
+
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(index);
@@ -231,7 +229,7 @@ const SortableItem = ({
           </div>
         </div>
         
-        {/* If the content is generating */}
+        {/* If the block is currently generating content */}
         {block.isGenerating && (
           <div className="mt-3 p-4 bg-surface rounded-md border border-border-secondary">
             <div className="flex flex-col items-center justify-center py-4">
@@ -240,11 +238,11 @@ const SortableItem = ({
             </div>
           </div>
         )}
-        
-        {/* If there's no content generated (and not generating), show placeholder */}
+
+        {/* If there's no content and we're not generating, show a "Generate" placeholder */}
         {!block.content && !block.isGenerating && (
           <div className="mt-3 p-3 bg-surface rounded-md border border-border-secondary text-center">
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 onGenerate(index);
@@ -255,10 +253,11 @@ const SortableItem = ({
             </button>
           </div>
         )}
-        
-        {/* If content is generated and we are not editing */}
+
+        {/* If the content is generated and we're not editing, show the markdown content */}
         {block.content && !block.isGenerating && !isEditing && (
           <div className="mt-3 bg-surface rounded-md border border-border-secondary transition-all duration-300 p-4">
+            {/* Expand/collapse content based on whether the user has clicked this item */}
             <div className={`overflow-y-auto transition-all duration-300 ${showFullContent ? 'max-h-96' : 'max-h-12'}`}>
               <div className="prose max-w-none text-text-primary text-sm">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -269,7 +268,7 @@ const SortableItem = ({
           </div>
         )}
         
-        {/* If we are editing */}
+        {/* If the user is editing the block (title/content) */}
         {isEditing && (
           <div className="mt-3 bg-surface rounded-md border border-border-secondary p-4">
             <label className="block text-sm text-text-secondary mb-1">
@@ -292,8 +291,8 @@ const SortableItem = ({
           </div>
         )}
       </div>
-      
-      {/* Regenerate Modal */}
+
+      {/* Regenerate Modal - Only shows if user clicked "Regenerate" */}
       {showRegenerateModal && (
         <RegenerateModal
           isOpen={showRegenerateModal}
@@ -302,8 +301,7 @@ const SortableItem = ({
           initialPrompt={block.prompt}
           onRegenerate={handleRegenerateContent}
           onSelect={(selectedContent) => {
-            // Once the user picks one alternative version,
-            // update the block's content in the parent:
+            // user picks one alternative version
             onEdit(index, 'content', selectedContent);
             setContent(selectedContent);
           }}

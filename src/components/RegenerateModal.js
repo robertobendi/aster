@@ -11,19 +11,44 @@ const RegenerateModal = ({
   onSelect,
   isGenerating
 }) => {
+  // The user can edit the prompt in the modal
   const [customPrompt, setCustomPrompt] = useState(initialPrompt);
+  // We'll store partial results as they come in
   const [alternatives, setAlternatives] = useState([]);
+  // Track which version is selected
   const [selectedIndex, setSelectedIndex] = useState(null);
-  
+
   const handleRegenerate = () => {
-    onRegenerate(customPrompt, (results) => {
-      setAlternatives(results);
-      setSelectedIndex(null);
-    });
+    // Clear out any old results
+    setAlternatives([]);
+    setSelectedIndex(null);
+
+    // We'll call the parent's `onRegenerate`, 
+    // providing 2 callbacks: partial result & final result
+
+    onRegenerate(
+      customPrompt,
+      // partialCb: called each time a version finishes
+      (result, idx) => {
+        // Insert or update the partial result in local state
+        setAlternatives((prev) => {
+          const newArr = [...prev];
+          newArr[idx] = result;
+          return newArr;
+        });
+      },
+      // doneCb: called after all versions are finished
+      (allResults) => {
+        // If you want to do anything after final completion, do it here
+        // e.g. setAlternatives(allResults) -> not strictly needed if you
+        // already added them above. 
+      }
+    );
   };
-  
+
   const handleSelect = () => {
     if (selectedIndex !== null && alternatives[selectedIndex]) {
+      // Return whichever version is selected back to the parent
       onSelect(alternatives[selectedIndex]);
       onClose();
     }
@@ -55,8 +80,9 @@ const RegenerateModal = ({
         {/* Content */}
         <div>
           <div className="mb-6">
-            <h3 className="font-medium text-text-primary mb-2">Block: {blockTitle}</h3>
-
+            <h3 className="font-medium text-text-primary mb-2">
+              Block: {blockTitle}
+            </h3>
             <label className="block text-text-secondary text-sm mb-2">
               Customize prompt for alternative content
             </label>
@@ -89,40 +115,61 @@ const RegenerateModal = ({
             </div>
           </div>
 
-          {/* Alternatives */}
+          {/* Show each alternative as soon as it arrives */}
           {alternatives.length > 0 && (
             <div className="mt-6">
-              <h3 className="font-medium text-text-primary mb-4">Alternative Versions</h3>
+              <h3 className="font-medium text-text-primary mb-4">
+                Alternative Versions
+              </h3>
               <div className="space-y-4">
-                {alternatives.map((alternative, index) => (
-                  <div 
-                    key={index}
-                    className={`p-4 border rounded-lg cursor-pointer transition-all ${
-                      selectedIndex === index 
-                        ? 'border-primary bg-primary/5' 
-                        : 'border-border-secondary hover:border-text-secondary'
-                    }`}
-                    onClick={() => setSelectedIndex(index)}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-text-primary">Version {index + 1}</span>
-                      {selectedIndex === index && (
-                        <span className="text-primary">
-                          <FiCheck />
+                {alternatives.map((alt, idx) => {
+                  if (!alt) {
+                    // This version hasn't arrived yet
+                    return (
+                      <div 
+                        key={idx}
+                        className="p-4 border border-border-secondary rounded-lg"
+                      >
+                        <p className="text-sm text-text-secondary">
+                          Generating version {idx + 1}...
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  // If we have text, show it
+                  return (
+                    <div
+                      key={idx}
+                      className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                        selectedIndex === idx
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border-secondary hover:border-text-secondary'
+                      }`}
+                      onClick={() => setSelectedIndex(idx)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-text-primary">
+                          Version {idx + 1}
                         </span>
-                      )}
+                        {selectedIndex === idx && (
+                          <span className="text-primary">
+                            <FiCheck />
+                          </span>
+                        )}
+                      </div>
+                      <pre className="text-text-secondary text-sm whitespace-pre-wrap max-h-48 overflow-y-auto">
+                        {alt}
+                      </pre>
                     </div>
-                    <pre className="text-text-secondary text-sm whitespace-pre-wrap max-h-48 overflow-y-auto">
-                      {alternative}
-                    </pre>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={handleSelect}
-                  disabled={selectedIndex === null}
+                  disabled={selectedIndex === null || !alternatives[selectedIndex]}
                   className="px-4 py-2 bg-primary text-background rounded hover:opacity-90 transition-all disabled:opacity-50 flex items-center"
                 >
                   <FiCheck className="mr-2" /> 

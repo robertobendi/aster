@@ -28,47 +28,34 @@ import simpleStorage from "../../utils/simpleStorage";
 import SortableItem from "../SortableItem";
 
 const ComputeTab = ({ blocks, setBlocks }) => {
-  const hardcodedPrompt = `
-  You have been provided with a set of files that contain data about a Florida insurance company. These files are flexible and may change each time.
+  const hardcodedPrompt = `You have been provided with a set of files that contain data about a Florida insurance company. These files are flexible and may change each time.
 
-Your task:
-
-- Read each file carefully.
-- Identify critical categories needed for a thorough underwriter’s report, aimed at assessing the risk and characteristics of the submitting insurance company.
-- Create a JSON array, where each element is one category.
-- Each category object must have exactly four keys:
-  "title" (short heading),
-  "prompt" (instructions for how to fill "content"),
-  "content" (leave this empty),
-  "relevant_files" (list the filenames that support the category).
-
-Guidelines:
-
-- Base each category strictly on data explicitly found in the provided files. Do not speculate or assume.
-- Only include categories for which you have supporting information in the files.
-- Do not overlap categories: each should be distinct, actionable, and helpful for underwriting risk assessment.
-- Subdivide your categories similarly to the example below, focusing on the specific changes or items identified, a short analysis, and the impact on overall underwriting or premium:
-
-1. [Topic or Change]
-   Analysis: [Concise explanation]
-   Impact: [Positive, Negative, Non-impactful, etc.]
-
-- Use simple, yet professional language.
-- Within "prompt", instruct the model that will fill "content" to:
-   • Be deterministic.
-   • Avoid hallucination.
-   • Rely solely on the listed files.
-   • Verify any references used are explicitly found in the source files.
-   • Re-check for consistency if any potential mismatch or unsupported claim appears.
-   • Keep in mind the final goal: providing an underwriter with a clear risk assessment.
-
-You may also include a concluding or summary category synthesizing the overall changes and how they affect underwriting or premium.
-
-Please return your output as a clean JSON array with no additional formatting or commentary.
-
-Note: Because the provided files may change, do not include any static or detailed examples that might cause confusion. Instead, rely purely on the information in whichever files are currently provided.
-`;
-
+    Your task:
+    
+    - Read each file carefully.
+    - Identify critical categories needed for a thorough underwriter’s report.
+    - Create a JSON array, where each element is one category.
+    - Each category object must have exactly four keys:
+      "title",
+      "prompt",
+      "content" (leave empty),
+      "relevant_files" (list the file IDs that support this category).
+    
+    Guidelines:
+    - Base each category strictly on data explicitly found in the provided files. Do not speculate.
+    - Only include categories for which you have supporting information in the files.
+    - Do not overlap categories: each should be distinct, actionable, and helpful for underwriting risk assessment.
+    - Use simple, professional language.
+    - Within "prompt", instruct the model that will fill "content" to:
+       • be deterministic,
+       • avoid hallucination,
+       • rely solely on the listed files,
+       • verify references used are explicitly found in the source files,
+       • keep final goal in mind: providing an underwriter with a clear risk assessment.
+    
+    Please return your output as a clean JSON array with no additional commentary.
+    
+    IMPORTANT: When referencing any file in "relevant_files", ONLY use the file's ID from the context. If you find no relevant file, use an empty array.`;
   // We no longer define [blocks, setBlocks] here - they're coming from props:
   // const [blocks, setBlocks] = useState([]); <-- Removed
 
