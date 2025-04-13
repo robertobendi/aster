@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { 
@@ -8,6 +8,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';   // for GitHub-flavored markdown
 import RegenerateModal from './RegenerateModal';
+
 // 1) Import your AI service
 import aiService from '../services/aiService';
 
@@ -20,7 +21,10 @@ const SortableItem = ({
   onGenerate,
   onInspect,
   isSelected,
-  onSelect
+  onSelect,
+
+  // 2) Accept the same "files" the parent uses (standardized files).
+  files
 }) => {
   const { 
     attributes, 
@@ -34,16 +38,14 @@ const SortableItem = ({
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(block.title);
   const [content, setContent] = useState(block.content || '');
-  const [promptInput, setPromptInput] = useState(
-    block.prompt + "return results in markdown and add graphs using markdown if you find revelant data" || ''
-  );
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  // This holds the alternative AI results we generate
+  // Store alternative generation results from the regenerate modal
   const [alternatives, setAlternatives] = useState([]);
 
-  React.useEffect(() => {
+  // Update local content whenever block.content changes externally
+  useEffect(() => {
     setContent(block.content || '');
   }, [block.content]);
 
@@ -73,33 +75,42 @@ const SortableItem = ({
   };
 
   const handleItemClick = (e) => {
+    // Prevent toggling if clicked on a button or input
     if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) {
       return;
     }
     onSelect(index);
   };
 
-  // 2) Replace the old “simulateContentGeneration” approach 
-  //    with a real AI call to `aiService`.
+  /**
+   * Called when user clicks "Regenerate" in the modal
+   */
   const handleRegenerateContent = async (customPrompt, callback) => {
     setIsRegenerating(true);
     try {
+      // 3) Determine which files to pass to the AI service (same logic as in ComputeTab)
+      const relevantFileNames = block.relevant_files || [];
+      const relevantFiles = files.filter((f) => relevantFileNames.includes(f.name));
+      const filesToUse = relevantFiles.length > 0 ? relevantFiles : files;
+
+      // We'll show the user 3 different “versions”
       const prompts = [
         `${customPrompt} - Version 1: Focus on key findings and actionable recommendations.`,
-        `${customPrompt} - Version 2: Provide detailed analysis with supporting evidence and examples. add markdown graphs`,
+        `${customPrompt} - Version 2: Provide detailed analysis with supporting evidence and examples. Add markdown graphs if relevant.`,
         `${customPrompt} - Version 3: Present a balanced view with pros and cons, risks and opportunities.`
       ];
 
-      // Call the AI service for each "version" prompt
+      // Query the AI for each version
       const results = await Promise.all(
-        prompts.map(prompt => aiService.query(prompt))
+        prompts.map(prompt => 
+          aiService.query(prompt, filesToUse) 
+        )
       );
 
-      // Save the array of alternative suggestions
+      // Save these alternatives in local state
       setAlternatives(results);
 
-      // If the callback is provided (like from RegenerateModal),
-      // pass the results back up
+      // If the caller (RegenerateModal) wants them, provide them
       if (callback) {
         callback(results);
       }
@@ -144,6 +155,7 @@ const SortableItem = ({
             ) : (
               <div className="flex items-center gap-2">
                 <h3 className="font-medium text-lg">{block.title}</h3>
+                {/* Status tags */}
                 {block.isGenerated && (
                   <span className="px-2 py-0.5 bg-status-success/10 text-status-success text-xs rounded-full flex items-center">
                     <FiCheck className="mr-1" />
