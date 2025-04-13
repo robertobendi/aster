@@ -29,89 +29,44 @@ import SortableItem from "../SortableItem";
 
 const ComputeTab = ({ blocks, setBlocks }) => {
   const hardcodedPrompt = `
-  You have been provided with a set of files that contain data about a Florida insurance company. These files are flexible and may change each time.
-
+You have been provided with a set of files that contain data about an insurance company. These files are flexible and may change each time, so be sure to read them and understand their content.
 Your task:
-
 Read each file carefully.
-
 Identify and create specific, critical categories that must appear in a full underwriter’s report.
-
-Only create categories if supported explicitly by the current files. Do not assume or fabricate information.
-
+Only create categories if explicitly supported by the current files. Do not assume, generalize, or fabricate information.
 Required Output:
-
 Return a JSON array.
 Each JSON element represents one category, with the following four keys:
-
-"title": short heading for the category
-
-"prompt": instructions to the model for how to fill "content"
-
-"content": leave this empty
-
-"relevant_files": list filenames that explicitly support this category
-
-MANDATORY CATEGORIES to create if files exist:
-
+"title": Short heading for the category.
+"prompt": Instructions to the model for how to fill "content".
+"content": Leave this empty.
+"relevant_files": List filenames that explicitly support this category.
+STRONGLY RECOMMENDED CATEGORIES to create if relevant files exist:
 Year-on-Year Contractual Changes
-
 Macroeconomic Risk Factors (Inflation, Forex, Interest Rates)
-
 Regulatory and Legislative Changes
-
 Cedant Historical Claims Profile
-
 Comparison to Industry Loss Models
-
 Exposure Analysis by Total Insured Value and Contract Layers
-
 Regional Risk Shifts Based on News
-
 Cedant Underwriting and Claims Handling Profile
-
 Overall Risk and Pricing Recommendation
-
-If a required category cannot be supported because files are missing, skip it. Never invent content.
-
-Guidelines for "prompt" (inside each category):
-
-Instruct the model to be deterministic and verifiable.
-
-Force it to rely only on the listed files.
-
-Emphasize avoiding hallucination or assumptions.
-
-Require explicit verification of numbers, facts, or claims.
-
-Remind that the ultimate goal is helping an underwriter assess risk accurately.
-
-Language Style:
-
-Use simple but professional language.
-
-Focus on concise, actionable, underwriting-relevant outputs.
-
-Use a clean, structured analysis per category:
-
-[Topic or Change]
-
-Analysis: [Short explanation]
-
-Impact: [Positive, Negative, Neutral]
-
+If a category cannot be supported because files are missing, don’t even try to add it, just skip it. Never invent content, nor apologize because you can’t find any data.
+Guidelines for Writing Each "prompt":
+Be deterministic and verifiable.
+Only use information from the listed files.
+Avoid hallucinations, assumptions, or extrapolations.
+Explicitly verify all numbers, facts, or claims.
+Ultimate goal: Help an underwriter assess risk accurately and clearly.
+Language Style: Simple, professional, concise.
+Focus:
+Summarized, bullet-point outputs whenever possible.
+Keep prompts short, direct, and actionable.
+Prioritize critical, underwriting-relevant information.
+Cut redundant, marginal, or less useful info.
 Additional Instructions:
-
 Do not overlap categories. Each must be distinct.
-
-Do not include examples or static templates that could mismatch future inputs.
-
-Only use information present in the files for that specific task.
-
-No commentary outside of the JSON array.
-
-IMPORTANT:
-You must strictly adhere to this structure.
+Do not add any commentary outside the JSON array.
   `;
   // We no longer define [blocks, setBlocks] here - they're coming from props:
   // const [blocks, setBlocks] = useState([]); <-- Removed
