@@ -1,15 +1,23 @@
-import { FiUpload, FiBarChart2, FiCpu, FiSettings } from 'react-icons/fi';
-import { Tabs, TabList, TabButton, TabPanel, TabPanels } from '../components/Tabs/Tabs.js';
-import FilesTab from '../components/Tabs/FilesTab';
-import DashboardTab from '../components/Tabs/DashboardTab';
-import ComputeTab from '../components/Tabs/ComputeTab';
-import SettingsTab from '../components/Tabs/SettingsTab';
+// src/pages/Main.jsx
+import React, { useState } from "react";
+import { FiUpload, FiBarChart2, FiCpu, FiSettings, FiEye } from "react-icons/fi";
+
+// Your tab system
+import { Tabs, TabList, TabButton, TabPanel, TabPanels } from "../components/Tabs/Tabs.js";
+
+// Existing tab components
+import FilesTab from "../components/Tabs/FilesTab";
+import ComputeTab from "../components/Tabs/ComputeTab";
+import SettingsTab from "../components/Tabs/SettingsTab";
+import ViewTab from "../components/Tabs/ViewTab";
 
 const Main = () => {
+  // 2) Store blocks here, so they're shared
+  const [blocks, setBlocks] = useState([]);
+
   return (
     <div className="min-h-screen bg-background text-text-primary">
       <div className="max-w-container mx-auto px-container-default">
-        
         <Tabs defaultTab="files">
           <TabList>
             <TabButton 
@@ -29,14 +37,6 @@ const Main = () => {
               } 
             />
             <TabButton 
-              value="dashboard" 
-              label={
-                <div className="flex items-center">
-                  <FiBarChart2 className="mr-2" /> Dashboard
-                </div>
-              } 
-            />
-            <TabButton 
               value="settings" 
               label={
                 <div className="flex items-center">
@@ -44,24 +44,38 @@ const Main = () => {
                 </div>
               } 
             />
+            {/* Add a new "View" tab */}
+            <TabButton 
+              value="view" 
+              label={
+                <div className="flex items-center">
+                  <FiEye className="mr-2" /> View
+                </div>
+              } 
+            />
           </TabList>
-          
+
           <TabPanels>
             <TabPanel value="files">
               <FilesTab />
             </TabPanel>
-            
+
+            {/* 3) Pass the parent's blocks/setBlocks to ComputeTab */}
             <TabPanel value="compute">
-              <ComputeTab />
+              <ComputeTab 
+                blocks={blocks} 
+                setBlocks={setBlocks} 
+              />
             </TabPanel>
-            
-            <TabPanel value="dashboard">
-              <DashboardTab />
+
+            <TabPanel value="view">
+              <ViewTab blocks={blocks} />
             </TabPanel>
-            
+
             <TabPanel value="settings">
               <SettingsTab />
             </TabPanel>
+
           </TabPanels>
         </Tabs>
       </div>

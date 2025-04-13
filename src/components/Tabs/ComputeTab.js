@@ -7,6 +7,7 @@ import {
   FiCheck,
   FiBarChart2,
   FiAlertTriangle,
+  FiPlus
 } from "react-icons/fi";
 import {
   DndContext,
@@ -26,7 +27,7 @@ import aiService from "../../services/aiService";
 import simpleStorage from "../../utils/simpleStorage";
 import SortableItem from "../SortableItem";
 
-const ComputeTab = () => {
+const ComputeTab = ({ blocks, setBlocks }) => {
   const hardcodedPrompt = `Create a JSON array for an underwriter's report analyzing a Florida insurance company. Each object in the array must represent a critical macro-category and include four keys:
 title: A short, clear heading for the category.
 prompt: A concise, data-focused instruction explaining what to analyze.
@@ -39,38 +40,37 @@ Ensure each category is modular (no overlap) and actionable for underwriting.
 Avoid speculative claims, assumptions, or unsupported metrics. Only reference data explicitly in the files.
 Format the JSON array cleanly, without unnecessary whitespace or comments.`;
 
+  // We no longer define [blocks, setBlocks] here - they're coming from props:
+  // const [blocks, setBlocks] = useState([]); <-- Removed
+
   const [files, setFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [generationQueue, setGenerationQueue] = useState([]);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState(null);
-  const [blocks, setBlocks] = useState([]);
   const [activeBlockId, setActiveBlockId] = useState(null);
   const [initialGeneration, setInitialGeneration] = useState(false);
   const [allComplete, setAllComplete] = useState(false);
   const [filesLoaded, setFilesLoaded] = useState(false);
 
-  // Track which SortableItem is selected for expanding/collapsing content
+  // For expanded/collapsed content in SortableItem
   const [selectedIndex, setSelectedIndex] = useState(null);
 
-  // Add AbortController ref
+  // For AI request cancellation
   const abortControllerRef = useRef(null);
+  // For polling new/removed files
   const checkFilesIntervalRef = useRef(null);
 
-  // Configure DnD sensors with proper constraints
+  // Configure drag-and-drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5, // Minimum drag distance to start dragging
-      },
+      activationConstraint: { distance: 5 }, // Minimum drag distance
     }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Load standardized files on component mount
+  // 1) Load & poll for standardized files
   useEffect(() => {
     const loadFiles = async () => {
       try {
@@ -85,19 +85,23 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
 
     loadFiles();
 
-    // Check for files every second
+    // Periodically check for file changes
     checkFilesIntervalRef.current = setInterval(async () => {
       try {
         const storedFiles = await simpleStorage.getItem("standardized_files");
         const filesArray = Array.isArray(storedFiles) ? storedFiles : [];
 
+        // If new files have appeared:
         if (filesArray.length > 0 && !filesLoaded) {
           setFiles(filesArray);
           setFilesLoaded(true);
-        } else if (filesArray.length === 0 && filesLoaded) {
+        }
+        // If all files have been removed:
+        else if (filesArray.length === 0 && filesLoaded) {
           setFilesLoaded(false);
-        } else if (filesArray.length !== files.length) {
-          // Update if the number of files has changed
+        }
+        // If the array size changed:
+        else if (filesArray.length !== files.length) {
           setFiles(filesArray);
         }
       } catch (e) {
@@ -114,9 +118,10 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
         clearInterval(checkFilesIntervalRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filesLoaded, files.length]);
 
-  // Auto-generate content in a queue after initial JSON categories
+  // 2) Automatically generate content for each block in a queue
   useEffect(() => {
     const processNextInQueue = async () => {
       if (
@@ -126,14 +131,14 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
       ) {
         return;
       }
-
+      // Take the next index
       const nextIndex = generationQueue[0];
-
       setGenerationQueue((queue) => queue.slice(1));
+
       await generateBlockContent(nextIndex);
 
-      // If queue is empty, we’re done
       if (generationQueue.length === 0) {
+        // Done generating all
         setInitialGeneration(false);
         setAllComplete(true);
       }
@@ -142,25 +147,27 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
     processNextInQueue();
   }, [generationQueue, isGeneratingContent, initialGeneration]);
 
+  // 3) Generate the initial "macro-categories" array from AI
   const generateReport = async () => {
     if (isProcessing) return;
 
-    // Abort any existing requests
+    // Abort existing requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-
-    // Create a new AbortController
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
     setIsProcessing(true);
     setProgress("Preparing files...");
     setError(null);
-    setBlocks([]);
     setAllComplete(false);
 
+    // Reset the parent's blocks
+    setBlocks([]);
+
     try {
+      // Call AI for the initial JSON structure
       const response = await aiService.query(
         hardcodedPrompt,
         files,
@@ -170,12 +177,12 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
         (message) => setProgress(message)
       );
 
-      // Make sure the request wasn't aborted
-      if (signal.aborted) return;
+      if (signal.aborted) return; // If user canceled
 
+      // Parse response as JSON
       let jsonResponse;
       try {
-        // Clean up response in case it contains markdown code blocks
+        // Remove any ```json fences
         const cleanedResponse = response.replace(/```json|```/g, "").trim();
         jsonResponse = JSON.parse(cleanedResponse);
       } catch (err) {
@@ -185,7 +192,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
         );
       }
 
-      // Add IDs and default states to each block
+      // Add unique IDs and default states
       const blocksWithIds = jsonResponse.map((block, idx) => ({
         id: `block-${Date.now()}-${idx}`,
         ...block,
@@ -194,9 +201,10 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
         isGenerated: false,
       }));
 
+      // Store in parent's state
       setBlocks(blocksWithIds);
 
-      // Set up generation queue for auto-generation
+      // Prepare queue to auto-generate each block
       setGenerationQueue(blocksWithIds.map((_, index) => index));
       setInitialGeneration(true);
     } catch (err) {
@@ -204,10 +212,10 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
         console.log("Request was aborted");
         return;
       }
-
       console.error("Error during report generation:", err);
       setError(err.message);
     } finally {
+      // If not canceled
       if (!abortControllerRef.current?.signal.aborted) {
         setIsProcessing(false);
         setProgress("");
@@ -215,6 +223,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
     }
   };
 
+  // 4) Draggable reorder
   const handleDragEnd = (event) => {
     const { active, over } = event;
     if (active && over && active.id !== over.id) {
@@ -227,32 +236,31 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
     }
   };
 
+  // 5) Delete a block by index
   const deleteBlock = (index) => {
     setBlocks((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // 6) Edit a block field
   const editBlock = (index, field, value) => {
     setBlocks((prev) => {
       const newBlocks = [...prev];
-      newBlocks[index] = {
-        ...newBlocks[index],
-        [field]: value,
-      };
+      newBlocks[index] = { ...newBlocks[index], [field]: value };
       return newBlocks;
     });
   };
 
+  // 7) Generate content for one block
   const generateBlockContent = async (index) => {
     if (isGeneratingContent) return;
 
     const block = blocks[index];
     if (!block || block.isGenerating) return;
 
-    // Abort any existing requests
+    // Abort existing requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    // Create a new AbortController
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
@@ -262,23 +270,19 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
     // Mark as generating
     setBlocks((prev) => {
       const newBlocks = [...prev];
-      newBlocks[index] = {
-        ...newBlocks[index],
-        isGenerating: true,
-      };
+      newBlocks[index] = { ...newBlocks[index], isGenerating: true };
       return newBlocks;
     });
 
     try {
-      // Find relevant files
+      // If user specified files, use them; else use all
       const relevantFileNames = block.relevant_files || [];
-      const relevantFiles = files.filter((file) =>
-        relevantFileNames.includes(file.name)
+      const relevantFiles = files.filter((f) =>
+        relevantFileNames.includes(f.name)
       );
-
-      // Use relevant files if any, else all
       const filesToUse = relevantFiles.length > 0 ? relevantFiles : files;
 
+      // AI request
       const content = await aiService.query(
         block.prompt,
         filesToUse,
@@ -290,7 +294,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
 
       if (signal.aborted) return;
 
-      // Update with generated content
+      // Store result
       setBlocks((prev) => {
         const newBlocks = [...prev];
         newBlocks[index] = {
@@ -312,10 +316,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
       // Mark as failed
       setBlocks((prev) => {
         const newBlocks = [...prev];
-        newBlocks[index] = {
-          ...newBlocks[index],
-          isGenerating: false,
-        };
+        newBlocks[index] = { ...newBlocks[index], isGenerating: false };
         return newBlocks;
       });
     } finally {
@@ -327,14 +328,13 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
     }
   };
 
+  // 8) Export final JSON (omitting internal fields)
   const exportJson = () => {
-    // Remove internal properties before export
     const exportData = blocks.map(
       ({ id, isGenerating, isGenerated, ...rest }) => rest
     );
     const jsonContent = JSON.stringify(exportData, null, 2);
 
-    // Create a downloadable file
     const blob = new Blob([jsonContent], { type: "application/json" });
     const url = URL.createObjectURL(blob);
 
@@ -348,6 +348,27 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // 9) Add a new block that prompts the user for the prompt text
+  const addNewBlock = () => {
+    const newPrompt = window.prompt("Enter a prompt for your new block:");
+    // If user hits cancel or empty, do nothing
+    if (!newPrompt) return;
+
+    setBlocks((prev) => [
+      ...prev,
+      {
+        id: `block-${Date.now()}-${prev.length}`,
+        // Title is optional, we can leave it blank or say "Custom"
+        title: newPrompt,
+        prompt: newPrompt,
+        content: "",
+        relevant_files: [],
+        isGenerating: false,
+        isGenerated: false,
+      },
+    ]);
   };
 
   return (
@@ -365,6 +386,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
         </p>
 
         <div className="flex flex-wrap gap-3">
+          {/* Generate Report Button */}
           <button
             onClick={generateReport}
             disabled={isProcessing || !filesLoaded}
@@ -383,17 +405,28 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
             )}
           </button>
 
+          {/* Export JSON Button (only if we have blocks) */}
           {blocks.length > 0 && (
             <button
               onClick={exportJson}
               className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all flex items-center"
             >
               <FiDownload className="mr-2" />
-              Export Report
+              Export Report JSON
             </button>
           )}
+
+          {/* Add new block: prompt user for the block's prompt */}
+          <button
+            onClick={addNewBlock}
+            className="px-4 py-2 bg-surface border border-border-primary rounded hover:bg-background transition-all flex items-center"
+          >
+            <FiPlus className="mr-2" />
+            Add New Block
+          </button>
         </div>
 
+        {/* Show progress if ongoing */}
         {progress && (
           <div className="mt-4">
             <p className="text-text-secondary flex items-center">
@@ -403,6 +436,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
           </div>
         )}
 
+        {/* Show errors if any */}
         {error && (
           <div className="mt-4 p-4 bg-status-error/10 border border-status-error/20 text-status-error rounded flex items-start">
             <FiAlertTriangle className="mr-2 mt-0.5 flex-shrink-0" />
@@ -410,6 +444,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
           </div>
         )}
 
+        {/* Warn if no standardized files */}
         {!filesLoaded && (
           <div className="mt-4 p-4 bg-status-warning/10 border border-status-warning/20 text-status-warning rounded flex items-center">
             <FiAlertTriangle className="mr-2 flex-shrink-0" />
@@ -420,17 +455,19 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
           </div>
         )}
 
+        {/* Show "all complete" message if everything is generated */}
         {allComplete && blocks.length > 0 && (
           <div className="mt-4 p-4 bg-status-success/10 border border-status-success/20 text-status-success rounded flex items-center">
             <FiCheck className="mr-2" />
             <span>
-              All sections analyzed successfully. You can now export the report.
+              All sections analyzed successfully. You can now export the report
+              or add new blocks.
             </span>
           </div>
         )}
       </div>
 
-      {/* Progress card for initial auto-generation */}
+      {/* Progress bar for auto-generation */}
       {initialGeneration && generationQueue.length > 0 && (
         <div className="bg-surface border border-border-primary rounded-lg p-6">
           <div className="flex items-center mb-4">
@@ -446,7 +483,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
                     100
                 )}%`,
               }}
-            ></div>
+            />
           </div>
           <p className="text-text-secondary">
             {blocks.length - generationQueue.length} of {blocks.length} sections
@@ -455,7 +492,7 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
         </div>
       )}
 
-      {/* Blocks listing with drag & drop */}
+      {/* Render all blocks with drag & drop */}
       {blocks.length > 0 && (
         <DndContext
           sensors={sensors}
@@ -473,13 +510,9 @@ Format the JSON array cleanly, without unnecessary whitespace or comments.`;
                   id={block.id}
                   index={index}
                   block={block}
-                  onDelete={deleteBlock}             // Matches your function name
-                  onEdit={editBlock}                 // Matches your function name
-                  onGenerate={generateBlockContent}   // Matches your function name
-
-                  // Optional: remove if unused
-                  // onInspect={handleInspect}
-
+                  onDelete={deleteBlock}
+                  onEdit={editBlock}
+                  onGenerate={generateBlockContent}
                   // For toggling expanded content
                   isSelected={selectedIndex === index}
                   onSelect={(i) => setSelectedIndex(i)}
