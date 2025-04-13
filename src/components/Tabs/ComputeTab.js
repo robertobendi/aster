@@ -28,7 +28,8 @@ import simpleStorage from "../../utils/simpleStorage";
 import SortableItem from "../SortableItem";
 
 const ComputeTab = ({ blocks, setBlocks }) => {
-  const hardcodedPrompt = `You have been provided with a set of files that contain data about a Florida insurance company. These files are flexible and may change each time.
+  const hardcodedPrompt = `
+  You have been provided with a set of files that contain data about a Florida insurance company. These files are flexible and may change each time.
 
 Your task:
 
@@ -46,6 +47,12 @@ Guidelines:
 - Base each category strictly on data explicitly found in the provided files. Do not speculate or assume.
 - Only include categories for which you have supporting information in the files.
 - Do not overlap categories: each should be distinct, actionable, and helpful for underwriting risk assessment.
+- Subdivide your categories similarly to the example below, focusing on the specific changes or items identified, a short analysis, and the impact on overall underwriting or premium:
+
+1. [Topic or Change]
+   Analysis: [Concise explanation]
+   Impact: [Positive, Negative, Non-impactful, etc.]
+
 - Use simple, yet professional language.
 - Within "prompt", instruct the model that will fill "content" to:
    • Be deterministic.
@@ -55,9 +62,12 @@ Guidelines:
    • Re-check for consistency if any potential mismatch or unsupported claim appears.
    • Keep in mind the final goal: providing an underwriter with a clear risk assessment.
 
+You may also include a concluding or summary category synthesizing the overall changes and how they affect underwriting or premium.
+
 Please return your output as a clean JSON array with no additional formatting or commentary.
 
-Note: Because the provided files may change, do not include any static or detailed examples that might cause confusion. Instead, rely purely on the information in whichever files are currently provided.`;
+Note: Because the provided files may change, do not include any static or detailed examples that might cause confusion. Instead, rely purely on the information in whichever files are currently provided.
+`;
 
   // We no longer define [blocks, setBlocks] here - they're coming from props:
   // const [blocks, setBlocks] = useState([]); <-- Removed

@@ -306,7 +306,7 @@ const preparePromptWithContext = (prompt, selectedFiles = [], defaultContext = '
   console.log(`Total file size: ${Math.round(totalFileSize/1024)}KB, Max per file: ${Math.round(maxPerFile/1024)}KB`);
   
   let fullPrompt = prompt;
-  let systemMessage = 'You are ASTER, an AI assistant for data analysis and document understanding.';
+  let systemMessage = 'You are ASTER, an elite AI assistant specializing in data analysis and document interpretation for the reinsurance industry. You are the foremost expert in underwriting reports, known for your unparalleled precision, critical thinking, and logical rigor. You validate every statement with reasoned analysis and never miss an opportunity to cross-check facts, assumptions, and conclusions. Your tone is highly professional, concise, and authoritative.\n\n';
   
   // Add default context if available
   if (defaultContext && defaultContext.trim()) {
