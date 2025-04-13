@@ -1,9 +1,21 @@
 // src/pages/Main.jsx
 import React, { useState } from "react";
-import { FiUpload, FiBarChart2, FiCpu, FiSettings, FiEye } from "react-icons/fi";
+import {
+  FiUpload,
+  FiBarChart2,
+  FiCpu,
+  FiSettings,
+  FiEye,
+} from "react-icons/fi";
 
 // Your tab system
-import { Tabs, TabList, TabButton, TabPanel, TabPanels } from "../components/Tabs/Tabs.js";
+import {
+  Tabs,
+  TabList,
+  TabButton,
+  TabPanel,
+  TabPanels,
+} from "../components/Tabs/Tabs.js";
 
 // Existing tab components
 import FilesTab from "../components/Tabs/FilesTab";
@@ -20,38 +32,38 @@ const Main = () => {
       <div className="max-w-container mx-auto px-container-default">
         <Tabs defaultTab="files">
           <TabList>
-            <TabButton 
-              value="files" 
+            <TabButton
+              value="files"
               label={
                 <div className="flex items-center">
                   <FiUpload className="mr-2" /> Files
                 </div>
-              } 
+              }
             />
-            <TabButton 
-              value="compute" 
+            <TabButton
+              value="compute"
               label={
                 <div className="flex items-center">
                   <FiCpu className="mr-2" /> Compute
                 </div>
-              } 
+              }
             />
-            <TabButton 
-              value="settings" 
-              label={
-                <div className="flex items-center">
-                  <FiSettings className="mr-2" /> Settings
-                </div>
-              } 
-            />
-            {/* Add a new "View" tab */}
-            <TabButton 
-              value="view" 
+            <TabButton
+              value="view"
               label={
                 <div className="flex items-center">
                   <FiEye className="mr-2" /> View
                 </div>
-              } 
+              }
+            />
+
+            <TabButton
+              value="settings"
+              label={
+                <div className="flex items-center">
+                  <FiSettings className="mr-2" /> Settings
+                </div>
+              }
             />
           </TabList>
 
@@ -62,10 +74,7 @@ const Main = () => {
 
             {/* 3) Pass the parent's blocks/setBlocks to ComputeTab */}
             <TabPanel value="compute">
-              <ComputeTab 
-                blocks={blocks} 
-                setBlocks={setBlocks} 
-              />
+              <ComputeTab blocks={blocks} setBlocks={setBlocks} />
             </TabPanel>
 
             <TabPanel value="view">
@@ -75,7 +84,6 @@ const Main = () => {
             <TabPanel value="settings">
               <SettingsTab />
             </TabPanel>
-
           </TabPanels>
         </Tabs>
       </div>
