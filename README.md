@@ -40,3 +40,5 @@ The platform standardizes various document formats into a unified structure, mak
 </div>
 
 ## License
+
+GNU
