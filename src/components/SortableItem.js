@@ -5,6 +5,8 @@ import {
   FiX, FiEdit, FiMove, FiRefreshCw, 
   FiLoader, FiCheck, FiPlay 
 } from 'react-icons/fi';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';   // for GitHub-flavored markdown
 import RegenerateModal from './RegenerateModal';
 
 const SortableItem = ({
@@ -15,8 +17,8 @@ const SortableItem = ({
   onEdit,
   onGenerate,
   onInspect,
-  isSelected,         // <-- NEW: passed-in prop from parent indicating if this item is selected
-  onSelect            // <-- NEW: parent’s callback to select this item
+  isSelected,
+  onSelect
 }) => {
   const { 
     attributes, 
@@ -27,7 +29,6 @@ const SortableItem = ({
     isDragging
   } = useSortable({ id });
   
-  // Instead of separate states for editing title and content, use a single toggle
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(block.title);
   const [content, setContent] = useState(block.content || '');
@@ -36,12 +37,10 @@ const SortableItem = ({
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [alternatives, setAlternatives] = useState([]);
 
-  // When the parent re-renders with new content, we can sync that if needed:
   React.useEffect(() => {
     setContent(block.content || '');
   }, [block.content]);
 
-  // Expand or collapse content based on isSelected
   const showFullContent = isSelected;
 
   const style = {
@@ -52,13 +51,11 @@ const SortableItem = ({
   };
 
   const saveEdit = () => {
-    // Save both title & content in one go
     onEdit(index, 'title', title);
     onEdit(index, 'content', content);
     setIsEditing(false);
   };
 
-  // Determine status colors for the left border
   const getStatusClasses = () => {
     if (block.isGenerating) {
       return "border-l-4 border-l-primary before:absolute before:inset-0 before:bg-gradient-to-r before:from-primary/10 before:to-transparent before:animate-pulse before:z-0";
@@ -69,9 +66,7 @@ const SortableItem = ({
     }
   };
 
-  // If the user clicks anywhere inside this item (aside from button controls), mark it selected
   const handleItemClick = (e) => {
-    // Prevent toggling selection if we clicked a button
     if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) {
       return;
     }
@@ -80,9 +75,7 @@ const SortableItem = ({
 
   const handleRegenerateContent = async (customPrompt, callback) => {
     setIsRegenerating(true);
-    
     try {
-      // Generate 3 alternative versions
       const prompts = [
         `${customPrompt} - Version 1: Focus on key findings and actionable recommendations.`,
         `${customPrompt} - Version 2: Provide detailed analysis with supporting evidence and examples.`,
@@ -102,7 +95,6 @@ const SortableItem = ({
     }
   };
   
-  // Dummy generation for demonstration
   const simulateContentGeneration = async (prompt) => {
     await new Promise(resolve => setTimeout(resolve, 1500));
     if (prompt.includes('Version 1')) {
@@ -119,7 +111,7 @@ const SortableItem = ({
       ref={setNodeRef} 
       style={style} 
       className={`relative bg-background border border-border-primary rounded-lg p-4 shadow-sm hover:shadow-md transition-all overflow-hidden cursor-pointer ${getStatusClasses()}`}
-      onClick={handleItemClick}  // <-- Clicking the item selects it
+      onClick={handleItemClick}
     >
       <div className="relative z-1">
         
@@ -195,8 +187,7 @@ const SortableItem = ({
               </>
             )}
             
-            {/* Single Edit button:
-                Only show if content is generated (i.e. block.content) and we're not generating right now */}
+            {/* Single Edit button */}
             {block.content && !block.isGenerating && (
               <button 
                 onClick={(e) => {
@@ -249,19 +240,21 @@ const SortableItem = ({
           </div>
         )}
         
-        {/* If content has been generated and we are not editing */}
+        {/* If content is generated and we are not editing */}
         {block.content && !block.isGenerating && !isEditing && (
-          <div className={`mt-3 bg-surface rounded-md border border-border-secondary transition-all duration-300 p-4`}>
-            {/* If selected -> full content, otherwise limited */}
+          <div className="mt-3 bg-surface rounded-md border border-border-secondary transition-all duration-300 p-4">
             <div className={`overflow-y-auto transition-all duration-300 ${showFullContent ? 'max-h-96' : 'max-h-12'}`}>
-              <pre className="text-text-primary whitespace-pre-wrap text-sm font-sans">
-                {block.content}
-              </pre>
+              {/* Render the content as markdown */}
+              <div className="prose max-w-none text-text-primary text-sm">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {block.content}
+                </ReactMarkdown>
+              </div>
             </div>
           </div>
         )}
         
-        {/* If we are editing, show a form for title & content together */}
+        {/* If we are editing */}
         {isEditing && (
           <div className="mt-3 bg-surface rounded-md border border-border-secondary p-4">
             <label className="block text-sm text-text-secondary mb-1">
@@ -275,7 +268,7 @@ const SortableItem = ({
             />
             <div className="flex justify-end mt-2">
               <button
-                onClick={() => saveEdit()}
+                onClick={saveEdit}
                 className="px-3 py-1 text-xs bg-primary text-background rounded"
               >
                 Save Changes
