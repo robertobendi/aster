@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { FiX, FiLoader, FiCheck } from 'react-icons/fi';
 
 const RegenerateModal = ({ 
@@ -27,21 +28,21 @@ const RegenerateModal = ({
       onClose();
     }
   };
-  
+
   if (!isOpen) return null;
-  
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-black/50" 
+        className="absolute inset-0 bg-black/50"
         onClick={onClose}
       />
       
-      {/* Sidebar */}
-      <div className="relative bg-background border-l border-border-primary w-full max-w-xl h-full overflow-y-auto shadow-xl transform transition-transform duration-300 ease-in-out">
+      {/* Modal Panel */}
+      <div className="relative z-10 bg-background border border-border-primary rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
         {/* Header */}
-        <div className="p-4 border-b border-border-secondary sticky top-0 bg-background z-10 flex justify-between items-center">
+        <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium text-text-primary">Regenerate Content</h2>
           <button 
             onClick={onClose}
@@ -50,23 +51,23 @@ const RegenerateModal = ({
             <FiX />
           </button>
         </div>
-        
+
         {/* Content */}
-        <div className="p-4">
+        <div>
           <div className="mb-6">
             <h3 className="font-medium text-text-primary mb-2">Block: {blockTitle}</h3>
-            
+
             <label className="block text-text-secondary text-sm mb-2">
               Customize prompt for alternative content
             </label>
             <textarea
               value={customPrompt}
               onChange={(e) => setCustomPrompt(e.target.value)}
-              className="w-full p-3 bg-surface border border-border-secondary rounded focus:outline-none focus:border-primary min-h-24"
+              className="w-full p-3 bg-surface border border-border-secondary rounded focus:outline-none focus:border-primary text-primary min-h-24"
               placeholder="Describe what you want in the regenerated content..."
               disabled={isGenerating}
             />
-            
+
             <div className="mt-3 flex justify-end">
               <button
                 onClick={handleRegenerate}
@@ -87,12 +88,11 @@ const RegenerateModal = ({
               </button>
             </div>
           </div>
-          
+
           {/* Alternatives */}
           {alternatives.length > 0 && (
             <div className="mt-6">
               <h3 className="font-medium text-text-primary mb-4">Alternative Versions</h3>
-              
               <div className="space-y-4">
                 {alternatives.map((alternative, index) => (
                   <div 
@@ -118,7 +118,7 @@ const RegenerateModal = ({
                   </div>
                 ))}
               </div>
-              
+
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={handleSelect}
@@ -133,7 +133,8 @@ const RegenerateModal = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
