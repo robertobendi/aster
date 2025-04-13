@@ -30,15 +30,9 @@ const RegenerateModal = ({
   };
 
   if (!isOpen) return null;
-<<<<<<< HEAD
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-=======
-  
-  return (
-    <div className="fixed inset-0 z-100 flex justify-end">
->>>>>>> 83ba1e7b21d215a6dad7e6392be10e437388fe6b
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/50"
