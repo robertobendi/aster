@@ -7,7 +7,7 @@ import {
   FiCheck,
   FiBarChart2,
   FiAlertTriangle,
-  FiPlus
+  FiPlus,
 } from "react-icons/fi";
 import {
   DndContext,
@@ -532,9 +532,10 @@ Note: Because the provided files may change, do not include any static or detail
                   onDelete={deleteBlock}
                   onEdit={editBlock}
                   onGenerate={generateBlockContent}
-                  // For toggling expanded content
                   isSelected={selectedIndex === index}
                   onSelect={(i) => setSelectedIndex(i)}
+                  // FIX: pass the files prop
+                  files={files}
                 />
               ))}
             </div>

@@ -448,7 +448,7 @@ class AIService {
         endpoint: `http://localhost:${port}/api/generate`,
         model: modelName,
         contextSize: contextSize,
-        promptFirstChars: formattedPrompt.substring(0, 100) + '...',
+        promptFirstChars: formattedPrompt,
         promptLength: formattedPrompt.length
       });
       

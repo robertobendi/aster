@@ -9,7 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';   // for GitHub-flavored markdown
 import RegenerateModal from './RegenerateModal';
 
-// 1) Import your AI service
+// Import your AI service
 import aiService from '../services/aiService';
 
 const SortableItem = ({
@@ -23,7 +23,7 @@ const SortableItem = ({
   isSelected,
   onSelect,
 
-  // 2) Accept the same "files" the parent uses (standardized files).
+  // Accept the same "files" the parent uses (standardized files).
   files
 }) => {
   const { 
@@ -84,11 +84,12 @@ const SortableItem = ({
 
   /**
    * Called when user clicks "Regenerate" in the modal
+   * We now generate multiple versions sequentially instead of in parallel.
    */
   const handleRegenerateContent = async (customPrompt, callback) => {
     setIsRegenerating(true);
     try {
-      // 3) Determine which files to pass to the AI service (same logic as in ComputeTab)
+      // 1) Determine which files to pass to the AI service
       const relevantFileNames = block.relevant_files || [];
       const relevantFiles = files.filter((f) => relevantFileNames.includes(f.name));
       const filesToUse = relevantFiles.length > 0 ? relevantFiles : files;
@@ -100,12 +101,14 @@ const SortableItem = ({
         `${customPrompt} - Version 3: Present a balanced view with pros and cons, risks and opportunities.`
       ];
 
-      // Query the AI for each version
-      const results = await Promise.all(
-        prompts.map(prompt => 
-          aiService.query(prompt, filesToUse) 
-        )
-      );
+      // Instead of Promise.all, do each query one at a time
+      const results = [];
+      for (let i = 0; i < prompts.length; i++) {
+        const prompt = prompts[i];
+        // Start generating
+        const result = await aiService.query(prompt, filesToUse);
+        results.push(result);
+      }
 
       // Save these alternatives in local state
       setAlternatives(results);
