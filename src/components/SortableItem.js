@@ -17,7 +17,7 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingContent, setEditingContent] = useState(false);
   const [title, setTitle] = useState(block.title);
-  const [content, setContent] = useState(block.content || '');
+  const [content, setContent] = useState(block.content || block.content);
   const [promptInput, setPromptInput] = useState(block.prompt || '');
   const [showFullContent, setShowFullContent] = useState(false);
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
@@ -191,23 +191,6 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
             </button>
           </div>
         </div>
-        
-        <div>
-          <textarea
-            className="w-full bg-background border border-border-secondary text-text-primary rounded p-2 text-sm"
-            value={promptInput}
-            rows="3"
-            onChange={handlePromptEdit}
-            onBlur={savePromptEdit}
-            placeholder="Enter prompt for this section..."
-          />
-        </div>
-        
-        {block.relevant_files && block.relevant_files.length > 0 && (
-          <div className="mt-2 text-xs text-text-secondary">
-            <span className="font-medium">Files:</span> {block.relevant_files.join(', ')}
-          </div>
-        )}
         
         {/* Content display - either preview or full */}
         {block.content && !block.isGenerating && (
