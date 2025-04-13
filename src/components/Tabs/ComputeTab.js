@@ -33,7 +33,7 @@ const ComputeTab = ({ blocks, setBlocks }) => {
 Your task:
 
 - Read each file carefully.
-- Identify critical categories needed for a thorough underwriter’s report.
+- Identify critical categories needed for a thorough underwriter’s report, aimed at assessing the risk and characteristics of the submitting insurance company.
 - Create a JSON array, where each element is one category.
 - Each category object must have exactly four keys:
   "title" (short heading),
@@ -45,7 +45,7 @@ Guidelines:
 
 - Base each category strictly on data explicitly found in the provided files. Do not speculate or assume.
 - Only include categories for which you have supporting information in the files.
-- Do not overlap categories: each should be distinct and actionable.
+- Do not overlap categories: each should be distinct, actionable, and helpful for underwriting risk assessment.
 - Use simple, yet professional language.
 - Within "prompt", instruct the model that will fill "content" to:
    • Be deterministic.
@@ -53,6 +53,7 @@ Guidelines:
    • Rely solely on the listed files.
    • Verify any references used are explicitly found in the source files.
    • Re-check for consistency if any potential mismatch or unsupported claim appears.
+   • Keep in mind the final goal: providing an underwriter with a clear risk assessment.
 
 Please return your output as a clean JSON array with no additional formatting or commentary.
 
