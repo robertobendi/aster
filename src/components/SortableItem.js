@@ -8,6 +8,8 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';   // for GitHub-flavored markdown
 import RegenerateModal from './RegenerateModal';
+// 1) Import your AI service
+import aiService from '../services/aiService';
 
 const SortableItem = ({
   id,
@@ -32,9 +34,13 @@ const SortableItem = ({
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(block.title);
   const [content, setContent] = useState(block.content || '');
-  const [promptInput, setPromptInput] = useState(block.prompt || '');
+  const [promptInput, setPromptInput] = useState(
+    block.prompt + "return results in markdown and add graphs using markdown if you find revelant data" || ''
+  );
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+
+  // This holds the alternative AI results we generate
   const [alternatives, setAlternatives] = useState([]);
 
   React.useEffect(() => {
@@ -73,36 +79,34 @@ const SortableItem = ({
     onSelect(index);
   };
 
+  // 2) Replace the old “simulateContentGeneration” approach 
+  //    with a real AI call to `aiService`.
   const handleRegenerateContent = async (customPrompt, callback) => {
     setIsRegenerating(true);
     try {
       const prompts = [
         `${customPrompt} - Version 1: Focus on key findings and actionable recommendations.`,
-        `${customPrompt} - Version 2: Provide detailed analysis with supporting evidence and examples.`,
+        `${customPrompt} - Version 2: Provide detailed analysis with supporting evidence and examples. add markdown graphs`,
         `${customPrompt} - Version 3: Present a balanced view with pros and cons, risks and opportunities.`
       ];
-      
+
+      // Call the AI service for each "version" prompt
       const results = await Promise.all(
-        prompts.map(prompt => simulateContentGeneration(prompt))
+        prompts.map(prompt => aiService.query(prompt))
       );
-      
+
+      // Save the array of alternative suggestions
       setAlternatives(results);
-      if (callback) callback(results);
+
+      // If the callback is provided (like from RegenerateModal),
+      // pass the results back up
+      if (callback) {
+        callback(results);
+      }
     } catch (error) {
       console.error('Error generating alternatives:', error);
     } finally {
       setIsRegenerating(false);
-    }
-  };
-  
-  const simulateContentGeneration = async (prompt) => {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    if (prompt.includes('Version 1')) {
-      return `Key Findings:\n• Risk concentration in coastal areas...`;
-    } else if (prompt.includes('Version 2')) {
-      return `The analysis reveals significant geographic concentration risk...`;
-    } else {
-      return `Risk Assessment:\n✓ Portfolio diversification has improved...`;
     }
   };
 
@@ -158,7 +162,6 @@ const SortableItem = ({
           
           {/* Right side */}
           <div className="flex items-center gap-2">
-            {/* Generate or Regenerate buttons */}
             {!block.isGenerating && (
               <>
                 {!block.isGenerated ? (
@@ -187,7 +190,6 @@ const SortableItem = ({
               </>
             )}
             
-            {/* Single Edit button */}
             {block.content && !block.isGenerating && (
               <button 
                 onClick={(e) => {
@@ -201,7 +203,6 @@ const SortableItem = ({
               </button>
             )}
             
-            {/* Delete button */}
             <button 
               onClick={(e) => {
                 e.stopPropagation();
@@ -244,7 +245,6 @@ const SortableItem = ({
         {block.content && !block.isGenerating && !isEditing && (
           <div className="mt-3 bg-surface rounded-md border border-border-secondary transition-all duration-300 p-4">
             <div className={`overflow-y-auto transition-all duration-300 ${showFullContent ? 'max-h-96' : 'max-h-12'}`}>
-              {/* Render the content as markdown */}
               <div className="prose max-w-none text-text-primary text-sm">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {block.content}
@@ -287,6 +287,8 @@ const SortableItem = ({
           initialPrompt={block.prompt}
           onRegenerate={handleRegenerateContent}
           onSelect={(selectedContent) => {
+            // Once the user picks one alternative version,
+            // update the block's content in the parent:
             onEdit(index, 'content', selectedContent);
             setContent(selectedContent);
           }}

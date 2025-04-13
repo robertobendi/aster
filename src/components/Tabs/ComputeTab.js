@@ -37,7 +37,7 @@ Base categories strictly on data from the provided files. Omit categories withou
 Use simple, non-technical language for clarity.
 Ensure each category is modular (no overlap) and actionable for underwriting.
 Avoid speculative claims, assumptions, or unsupported metrics. Only reference data explicitly in the files.
-Format the JSON array cleanly, with no markdown or extra symbols.`;
+Format the JSON array cleanly, without unnecessary whitespace or comments.`;
 
   const [files, setFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
