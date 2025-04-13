@@ -199,12 +199,16 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
               <span className="text-xs font-medium text-text-secondary flex items-center gap-2">
                 {showFullContent ? "Full Content" : "Content Preview"}
                 <button 
-                  onClick={() => setEditingContent(true)}
-                  className="p-1 rounded text-text-secondary hover:text-primary"
-                  title="Edit content"
-                >
-                  <FiEdit size={12} />
-                </button>
+                onClick={() => {
+                  setContent(block.content || ''); // <-- sync from latest block content
+                  setEditingContent(true);
+                }}
+                className="p-1 rounded text-text-secondary hover:text-primary"
+                title="Edit content"
+              >
+                <FiEdit size={12} />
+              </button>
+
               </span>
               <button 
                 onClick={toggleFullContent}
