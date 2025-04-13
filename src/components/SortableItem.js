@@ -1,10 +1,23 @@
 import React, { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { FiX, FiEdit, FiMove, FiRefreshCw, FiLoader, FiCheck, FiMaximize2, FiMinimize2, FiPlay } from 'react-icons/fi';
+import { 
+  FiX, FiEdit, FiMove, FiRefreshCw, 
+  FiLoader, FiCheck, FiPlay 
+} from 'react-icons/fi';
 import RegenerateModal from './RegenerateModal';
 
-const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspect }) => {
+const SortableItem = ({
+  id,
+  index,
+  block,
+  onDelete,
+  onEdit,
+  onGenerate,
+  onInspect,
+  isSelected,         // <-- NEW: passed-in prop from parent indicating if this item is selected
+  onSelect            // <-- NEW: parent’s callback to select this item
+}) => {
   const { 
     attributes, 
     listeners, 
@@ -14,15 +27,22 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
     isDragging
   } = useSortable({ id });
   
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [editingContent, setEditingContent] = useState(false);
+  // Instead of separate states for editing title and content, use a single toggle
+  const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(block.title);
-  const [content, setContent] = useState(block.content || block.content);
+  const [content, setContent] = useState(block.content || '');
   const [promptInput, setPromptInput] = useState(block.prompt || '');
-  const [showFullContent, setShowFullContent] = useState(false);
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [alternatives, setAlternatives] = useState([]);
+
+  // When the parent re-renders with new content, we can sync that if needed:
+  React.useEffect(() => {
+    setContent(block.content || '');
+  }, [block.content]);
+
+  // Expand or collapse content based on isSelected
+  const showFullContent = isSelected;
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -31,10 +51,11 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
     zIndex: isDragging ? 10 : 1,
   };
 
-  const saveEdit = (field, value) => {
-    onEdit(index, field, value || (field === 'title' ? title : content));
-    if (field === 'title') setEditingTitle(false);
-    if (field === 'content') setEditingContent(false);
+  const saveEdit = () => {
+    // Save both title & content in one go
+    onEdit(index, 'title', title);
+    onEdit(index, 'content', content);
+    setIsEditing(false);
   };
 
   // Determine status colors for the left border
@@ -48,20 +69,15 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
     }
   };
 
-  const toggleFullContent = () => {
-    setShowFullContent(!showFullContent);
-    // Also call the parent's inspect handler if it exists
-    if (onInspect) onInspect(index);
+  // If the user clicks anywhere inside this item (aside from button controls), mark it selected
+  const handleItemClick = (e) => {
+    // Prevent toggling selection if we clicked a button
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) {
+      return;
+    }
+    onSelect(index);
   };
-  
-  const handlePromptEdit = (e) => {
-    setPromptInput(e.target.value);
-  };
-  
-  const savePromptEdit = () => {
-    onEdit(index, 'prompt', promptInput);
-  };
-  
+
   const handleRegenerateContent = async (customPrompt, callback) => {
     setIsRegenerating(true);
     
@@ -74,10 +90,7 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
       ];
       
       const results = await Promise.all(
-        prompts.map(prompt => 
-          // We're using a dummy response for the demo - in real implementation, use actual API
-          simulateContentGeneration(prompt)
-        )
+        prompts.map(prompt => simulateContentGeneration(prompt))
       );
       
       setAlternatives(results);
@@ -89,18 +102,15 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
     }
   };
   
-  // This is just for demonstration - replace with actual AI generation
+  // Dummy generation for demonstration
   const simulateContentGeneration = async (prompt) => {
-    // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Just demo content - replace with actual AI service in real implementation
     if (prompt.includes('Version 1')) {
-      return `Key Findings:\n• Risk concentration in coastal areas exceeds industry benchmarks by 42%\n• Premiums inadequately reflect hurricane probability in Zone 3\n• Historical loss ratio trending upward (5.2% annually)\n\nRecommendations:\n1. Rebalance portfolio with 15% shift to inland properties\n2. Implement premium adjustments in high-risk zones\n3. Review reinsurance treaty terms before renewal`;
+      return `Key Findings:\n• Risk concentration in coastal areas...`;
     } else if (prompt.includes('Version 2')) {
-      return `The analysis reveals significant geographic concentration risk in the property portfolio. Specifically, 64% of insured properties are located in FEMA-designated high-risk flood zones, with 27% in areas that experienced hurricane-related losses in the past decade.\n\nHistorical performance data indicates progressive deterioration in loss ratios within coastal regions, rising from 62.1% in 2020 to 76.5% in current period. This trend correlates strongly (0.87 correlation coefficient) with increased severe weather events.\n\nPricing adequacy assessment demonstrates a systematic underpricing of hurricane risk. Current rate levels capture approximately 78% of expected losses based on updated catastrophe models.`;
+      return `The analysis reveals significant geographic concentration risk...`;
     } else {
-      return `Risk Assessment:\n✓ Portfolio diversification has improved in northern regions\n✗ Coastal exposure remains significantly above target thresholds\n✓ New underwriting guidelines show early positive results\n✗ Premium adequacy gap of 22% in hurricane-prone zones\n\nOpportunities:\n• Targeted non-renewals could improve risk profile by 18%\n• Precision pricing model could increase premium adequacy\n• Enhanced mitigation requirements show 24% loss reduction\n\nConclusions:\nWhile improvements are visible in certain segments, the overall geographic concentration presents continuing challenges that require immediate attention.`;
+      return `Risk Assessment:\n✓ Portfolio diversification has improved...`;
     }
   };
 
@@ -108,10 +118,14 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
     <div 
       ref={setNodeRef} 
       style={style} 
-      className={`relative bg-background border border-border-primary rounded-lg p-4 shadow-sm hover:shadow-md transition-all overflow-hidden ${getStatusClasses()}`}
+      className={`relative bg-background border border-border-primary rounded-lg p-4 shadow-sm hover:shadow-md transition-all overflow-hidden cursor-pointer ${getStatusClasses()}`}
+      onClick={handleItemClick}  // <-- Clicking the item selects it
     >
       <div className="relative z-1">
+        
+        {/* Top bar */}
         <div className="flex items-center justify-between mb-3">
+          {/* Left side */}
           <div className="flex items-center gap-2">
             <div
               {...attributes}
@@ -122,14 +136,13 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
               <FiMove />
             </div>
             
-            {editingTitle ? (
+            {/* Title display or input if editing */}
+            {isEditing ? (
               <input
                 type="text"
                 className="bg-background border border-border-secondary text-text-primary rounded p-2 text-sm w-full"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                onBlur={() => saveEdit('title')}
-                onKeyDown={(e) => e.key === 'Enter' && saveEdit('title')}
                 autoFocus
               />
             ) : (
@@ -151,12 +164,17 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
             )}
           </div>
           
+          {/* Right side */}
           <div className="flex items-center gap-2">
+            {/* Generate or Regenerate buttons */}
             {!block.isGenerating && (
               <>
                 {!block.isGenerated ? (
                   <button 
-                    onClick={() => onGenerate(index)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onGenerate(index);
+                    }}
                     className="p-1 rounded hover:bg-background text-text-secondary hover:text-primary"
                     title="Generate content"
                   >
@@ -164,7 +182,10 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
                   </button>
                 ) : (
                   <button 
-                    onClick={() => setShowRegenerateModal(true)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowRegenerateModal(true);
+                    }}
                     className="p-1 rounded hover:bg-background text-text-secondary hover:text-primary"
                     title="Regenerate content"
                   >
@@ -174,16 +195,27 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
               </>
             )}
             
-            <button 
-              onClick={() => setEditingTitle(true)}
-              className="p-1 rounded text-text-secondary hover:text-primary hover:bg-background"
-              title="Edit title"
-            >
-              <FiEdit />
-            </button>
+            {/* Single Edit button:
+                Only show if content is generated (i.e. block.content) and we're not generating right now */}
+            {block.content && !block.isGenerating && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditing((prev) => !prev);
+                }}
+                className="p-1 rounded text-text-secondary hover:text-primary hover:bg-background"
+                title="Edit title & content"
+              >
+                <FiEdit />
+              </button>
+            )}
             
+            {/* Delete button */}
             <button 
-              onClick={() => onDelete(index)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(index);
+              }}
               className="p-1 rounded text-text-secondary hover:text-status-error hover:bg-background"
               title="Delete block"
             >
@@ -192,60 +224,7 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
           </div>
         </div>
         
-        {/* Content display - either preview or full */}
-        {block.content && !block.isGenerating && (
-          <div className={`mt-3 bg-surface rounded-md border border-border-secondary transition-all duration-300 ${showFullContent ? 'p-4' : 'p-2'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-text-secondary flex items-center gap-2">
-                {showFullContent ? "Full Content" : "Content Preview"}
-                <button 
-                onClick={() => {
-                  setContent(block.content || ''); // <-- sync from latest block content
-                  setEditingContent(true);
-                }}
-                className="p-1 rounded text-text-secondary hover:text-primary"
-                title="Edit content"
-              >
-                <FiEdit size={12} />
-              </button>
-
-              </span>
-              <button 
-                onClick={toggleFullContent}
-                className="text-xs text-text-secondary hover:text-primary"
-              >
-                {showFullContent ? "Collapse" : "View Full"}
-              </button>
-            </div>
-            
-            {editingContent ? (
-              <div className="w-full">
-                <textarea
-                  className="w-full bg-background border border-border-secondary text-text-primary rounded p-2 text-sm min-h-32"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={showFullContent ? 10 : 4}
-                />
-                <div className="flex justify-end mt-2">
-                  <button
-                    onClick={() => saveEdit('content')}
-                    className="px-3 py-1 text-xs bg-primary text-background rounded"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className={`overflow-y-auto transition-all duration-300 ${showFullContent ? 'max-h-96' : 'max-h-12'}`}>
-                <pre className={`text-text-primary whitespace-pre-wrap text-sm font-sans ${!showFullContent && 'line-clamp-2'}`}>
-                  {block.content}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Show a placeholder when content is being generated */}
+        {/* If the content is generating */}
         {block.isGenerating && (
           <div className="mt-3 p-4 bg-surface rounded-md border border-border-secondary">
             <div className="flex flex-col items-center justify-center py-4">
@@ -255,15 +234,53 @@ const SortableItem = ({ id, index, block, onDelete, onEdit, onGenerate, onInspec
           </div>
         )}
         
-        {/* Show a prompt when no content has been generated yet */}
+        {/* If there's no content generated (and not generating), show placeholder */}
         {!block.content && !block.isGenerating && (
           <div className="mt-3 p-3 bg-surface rounded-md border border-border-secondary text-center">
             <button 
-              onClick={() => onGenerate(index)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onGenerate(index);
+              }}
               className="px-3 py-1 text-sm bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors"
             >
               Generate Analysis
             </button>
+          </div>
+        )}
+        
+        {/* If content has been generated and we are not editing */}
+        {block.content && !block.isGenerating && !isEditing && (
+          <div className={`mt-3 bg-surface rounded-md border border-border-secondary transition-all duration-300 p-4`}>
+            {/* If selected -> full content, otherwise limited */}
+            <div className={`overflow-y-auto transition-all duration-300 ${showFullContent ? 'max-h-96' : 'max-h-12'}`}>
+              <pre className="text-text-primary whitespace-pre-wrap text-sm font-sans">
+                {block.content}
+              </pre>
+            </div>
+          </div>
+        )}
+        
+        {/* If we are editing, show a form for title & content together */}
+        {isEditing && (
+          <div className="mt-3 bg-surface rounded-md border border-border-secondary p-4">
+            <label className="block text-sm text-text-secondary mb-1">
+              Content
+            </label>
+            <textarea
+              className="w-full bg-background border border-border-secondary text-text-primary rounded p-2 text-sm min-h-32"
+              value={content}
+              rows={8}
+              onChange={(e) => setContent(e.target.value)}
+            />
+            <div className="flex justify-end mt-2">
+              <button
+                onClick={() => saveEdit()}
+                className="px-3 py-1 text-xs bg-primary text-background rounded"
+              >
+                Save Changes
+              </button>
+            </div>
           </div>
         )}
       </div>
