@@ -76,19 +76,21 @@ const Home = () => {
                 ASTER
               </h1>
               <p className="text-sm text-gray-400 tracking-[0.15em] uppercase">
-                Advanced System for Tailored Editing for Reinsurance
+                Automated Structuring and Tailored Editing for Reinsurance
               </p>
               
               <div className="h-px w-24 bg-gray-700 my-8"></div>
               
               <h2 className="text-xl font-light tracking-wider text-gray-200 mb-6">
-                Unify. Analyze. Discover.
+               Optimized. Modular. Intelligent.
               </h2>
               
               <p className="text-gray-400 text-sm leading-relaxed mb-10 pr-4 max-w-xl">
-                ASTER transforms disparate document formats into structured data, 
-                enabling deep analysis and connection discovery across your entire document corpus. 
-                From unstructured text to actionable intelligence in one seamless workflow.
+              ASTER turns unstructured documents into structured intelligence 
+              — uncover hidden insights, map connections, and unlock the full 
+              power of your data.
+
+
               </p>
               
               {/* Feature list */}
@@ -128,7 +130,7 @@ const Home = () => {
                     <FiCode className="w-5 h-5 text-white/70" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-white mb-1">Query Engine</h3>
+                    <h3 className="text-sm font-medium text-white mb-1">Query Your Data</h3>
                     <p className="text-xs text-gray-400">Extract precise insights with natural language</p>
                   </div>
                 </div>
