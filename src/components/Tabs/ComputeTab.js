@@ -28,34 +28,91 @@ import simpleStorage from "../../utils/simpleStorage";
 import SortableItem from "../SortableItem";
 
 const ComputeTab = ({ blocks, setBlocks }) => {
-  const hardcodedPrompt = `You have been provided with a set of files that contain data about a Florida insurance company. These files are flexible and may change each time.
+  const hardcodedPrompt = `
+  You have been provided with a set of files that contain data about a Florida insurance company. These files are flexible and may change each time.
 
-    Your task:
-    
-    - Read each file carefully.
-    - Identify critical categories needed for a thorough underwriter’s report.
-    - Create a JSON array, where each element is one category.
-    - Each category object must have exactly four keys:
-      "title",
-      "prompt",
-      "content" (leave empty),
-      "relevant_files" (list the file IDs that support this category).
-    
-    Guidelines:
-    - Base each category strictly on data explicitly found in the provided files. Do not speculate.
-    - Only include categories for which you have supporting information in the files.
-    - Do not overlap categories: each should be distinct, actionable, and helpful for underwriting risk assessment.
-    - Use simple, professional language.
-    - Within "prompt", instruct the model that will fill "content" to:
-       • be deterministic,
-       • avoid hallucination,
-       • rely solely on the listed files,
-       • verify references used are explicitly found in the source files,
-       • keep final goal in mind: providing an underwriter with a clear risk assessment.
-    
-    Please return your output as a clean JSON array with no additional commentary.
-    
-    IMPORTANT: When referencing any file in "relevant_files", ONLY use the file's ID from the context. If you find no relevant file, use an empty array.`;
+Your task:
+
+Read each file carefully.
+
+Identify and create specific, critical categories that must appear in a full underwriter’s report.
+
+Only create categories if supported explicitly by the current files. Do not assume or fabricate information.
+
+Required Output:
+
+Return a JSON array.
+Each JSON element represents one category, with the following four keys:
+
+"title": short heading for the category
+
+"prompt": instructions to the model for how to fill "content"
+
+"content": leave this empty
+
+"relevant_files": list filenames that explicitly support this category
+
+MANDATORY CATEGORIES to create if files exist:
+
+Year-on-Year Contractual Changes
+
+Macroeconomic Risk Factors (Inflation, Forex, Interest Rates)
+
+Regulatory and Legislative Changes
+
+Cedant Historical Claims Profile
+
+Comparison to Industry Loss Models
+
+Exposure Analysis by Total Insured Value and Contract Layers
+
+Regional Risk Shifts Based on News
+
+Cedant Underwriting and Claims Handling Profile
+
+Overall Risk and Pricing Recommendation
+
+If a required category cannot be supported because files are missing, skip it. Never invent content.
+
+Guidelines for "prompt" (inside each category):
+
+Instruct the model to be deterministic and verifiable.
+
+Force it to rely only on the listed files.
+
+Emphasize avoiding hallucination or assumptions.
+
+Require explicit verification of numbers, facts, or claims.
+
+Remind that the ultimate goal is helping an underwriter assess risk accurately.
+
+Language Style:
+
+Use simple but professional language.
+
+Focus on concise, actionable, underwriting-relevant outputs.
+
+Use a clean, structured analysis per category:
+
+[Topic or Change]
+
+Analysis: [Short explanation]
+
+Impact: [Positive, Negative, Neutral]
+
+Additional Instructions:
+
+Do not overlap categories. Each must be distinct.
+
+Do not include examples or static templates that could mismatch future inputs.
+
+Only use information present in the files for that specific task.
+
+No commentary outside of the JSON array.
+
+IMPORTANT:
+You must strictly adhere to this structure.
+  `;
   // We no longer define [blocks, setBlocks] here - they're coming from props:
   // const [blocks, setBlocks] = useState([]); <-- Removed
 
